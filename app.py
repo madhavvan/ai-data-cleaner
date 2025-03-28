@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
-# load API key clearly
+# Load API key clearly
 load_dotenv()
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
@@ -32,3 +32,6 @@ if uploaded_file:
 
                 st.subheader('AI-generated Suggestions clearly:')
                 st.write(suggestions)
+
+    except Exception as e:
+        st.error(f"Error clearly: {e}")
