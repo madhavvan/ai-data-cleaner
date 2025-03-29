@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
 import io
 
-# Load API key clearly
 load_dotenv()
 openai_api_key = os.getenv('OPENAI_API_KEY') or st.secrets.get("OPENAI_API_KEY")
 
@@ -15,32 +15,27 @@ if openai_api_key is None:
 
 client = OpenAI(api_key=openai_api_key)
 
-st.title('🧠 Automated AI Data Cleaner')
+st.title('🚀 Professional AI Data Cleaner & Insights Generator')
 
 uploaded_file = st.file_uploader('Upload CSV or Excel clearly:', ['csv', 'xlsx'])
 
 if uploaded_file:
     try:
-        # Load dataset clearly
         df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
         st.success('✅ Data uploaded clearly!')
         st.dataframe(df.head())
 
         if st.button('Generate AI Cleaning Suggestions clearly'):
-            with st.spinner('Analyzing data clearly...'):
-                prompt = f"Here's the dataset:\n{df.head().to_string()}\nGive cleaning steps clearly as concise bullet points (like remove columns, fill missing values clearly)."
+            with st.spinner('Analyzing clearly...'):
+                prompt_cleaning = f"This dataset:\n{df.head().to_string()}\nBrief bullet points on cleaning steps clearly."
 
-                completion = client.chat.completions.create(
+                completion_cleaning = client.chat.completions.create(
                     model="gpt-3.5-turbo",
-                    messages=[{"role": "user", "content": prompt}]
+                    messages=[{"role": "user", "content": prompt_cleaning}]
                 )
 
-                suggestions = completion.choices[0].message.content
-
-                st.subheader('AI Cleaning Suggestions (clearly):')
+                suggestions = completion_cleaning.choices[0].message.content
                 suggestions_list = [s.strip('- ') for s in suggestions.strip().split('\n') if s]
-
-                st.write("Clearly select steps to apply:")
 
                 selected_steps = []
                 for step in suggestions_list:
@@ -52,26 +47,20 @@ if uploaded_file:
 
                     for step in selected_steps:
                         step_lower = step.lower()
-                        # Remove columns clearly
                         if 'remove column' in step_lower:
                             col_to_remove = step.split('remove column')[-1].strip().strip("'\"")
                             if col_to_remove in cleaned_df.columns:
                                 cleaned_df.drop(columns=col_to_remove, inplace=True)
-                        # Fill missing values clearly
                         elif 'fill missing values' in step_lower:
                             cleaned_df.fillna(method='ffill', inplace=True)
-                        # Drop duplicates clearly
                         elif 'remove duplicates' in step_lower or 'drop duplicates' in step_lower:
                             cleaned_df.drop_duplicates(inplace=True)
-                        # Remove rows with missing values clearly
                         elif 'remove rows with missing' in step_lower:
                             cleaned_df.dropna(inplace=True)
 
-                    st.success("✅ Data cleaning clearly applied successfully!")
-                    st.write("**Cleaned Data clearly:**")
+                    st.success("✅ Data cleaned automatically clearly!")
                     st.dataframe(cleaned_df.head())
 
-                    # Allow download cleaned data clearly
                     buffer = io.BytesIO()
                     cleaned_df.to_csv(buffer, index=False)
                     buffer.seek(0)
@@ -82,6 +71,26 @@ if uploaded_file:
                         file_name="cleaned_data.csv",
                         mime="text/csv"
                     )
+
+                    # Generate insights and visualizations clearly
+                    with st.spinner('Generating AI Insights clearly...'):
+                        prompt_insights = f"Briefly summarize clearly key insights and suggest one or two charts (clearly) from this cleaned dataset:\n{cleaned_df.head().to_string()}"
+
+                        completion_insights = client.chat.completions.create(
+                            model="gpt-3.5-turbo",
+                            messages=[{"role": "user", "content": prompt_insights}]
+                        )
+
+                        insights = completion_insights.choices[0].message.content
+                        st.subheader("🔍 AI Insights clearly:")
+                        st.write(insights)
+
+                        # Example visualization (automatic based on AI clearly)
+                        numeric_columns = cleaned_df.select_dtypes(include=['int64', 'float64']).columns
+                        if len(numeric_columns) >= 2:
+                            fig = px.scatter(cleaned_df, x=numeric_columns[0], y=numeric_columns[1],
+                                             title=f"{numeric_columns[0]} vs {numeric_columns[1]} (AI Recommended clearly)")
+                            st.plotly_chart(fig, use_container_width=True)
 
     except Exception as e:
         st.error(f"Error clearly: {e}")
