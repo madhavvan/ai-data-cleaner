@@ -16,29 +16,20 @@ if openai_api_key is None:
 
 client = OpenAI(api_key=openai_api_key)
 
-st.set_page_config(page_title="Advanced AI Data Cleaner", layout="wide")
+st.set_page_config(page_title="AI Data Cleaner", layout="wide")
 
-st.title('🚀 Advanced AI Data Cleaner & Analyzer')
-
-if 'suggestions' not in st.session_state:
-    st.session_state.suggestions = []
+st.title('🚀 Robust AI Data Cleaner')
 
 uploaded_file = st.file_uploader('Upload CSV or Excel:', ['csv', 'xlsx'])
 
 if uploaded_file:
-    if 'df' not in st.session_state:
-        df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
-        st.session_state.df = df.copy()
-    else:
-        df = st.session_state.df
-
+    df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
     st.success('✅ File uploaded successfully!')
-    st.subheader('📌 Original Data Preview:')
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df.head())
 
-    if st.button('🔎 Generate AI Cleaning Suggestions'):
-        with st.spinner('Generating AI suggestions...'):
-            prompt_cleaning = f"Dataset:\n{df.head().to_string()}\nProvide concise bullet points for data cleaning steps clearly."
+    if st.button('Generate AI Cleaning Suggestions'):
+        with st.spinner('Generating suggestions clearly...'):
+            prompt_cleaning = f"Dataset preview:\n{df.head().to_string()}\nClearly specify bullet-point data cleaning steps (remove columns, fill missing values, remove invalid rows, one-hot encoding)."
 
             completion_cleaning = client.chat.completions.create(
                 model="gpt-3.5-turbo",
@@ -46,62 +37,67 @@ if uploaded_file:
             )
 
             suggestions = completion_cleaning.choices[0].message.content
-            st.session_state.suggestions = [s.strip('- ') for s in suggestions.strip().split('\n') if s]
+            st.session_state.suggestions = suggestions.split('\n')
 
-    if st.session_state.suggestions:
+    if 'suggestions' in st.session_state:
         st.subheader('🧹 AI Cleaning Suggestions:')
         selected_steps = []
         for step in st.session_state.suggestions:
-            if st.checkbox(step, value=True):
+            step = step.strip('- ')
+            if step and st.checkbox(step, True):
                 selected_steps.append(step)
 
-        if st.button('✅ Apply Cleaning Steps'):
+        if st.button('Apply Cleaning Steps'):
             cleaned_df = df.copy()
             actions_applied = []
 
             for step in selected_steps:
                 step_lower = step.lower()
-                # Drop columns
-                if 'drop' in step_lower and 'column' in step_lower:
-                    col_to_drop = step.split("'")[1]
-                    if col_to_drop in cleaned_df.columns:
-                        cleaned_df.drop(columns=[col_to_drop], inplace=True)
-                        actions_applied.append(f"Dropped column '{col_to_drop}'.")
 
-                # Fill missing values with median
+                # Remove column explicitly
+                if 'remove column' in step_lower or 'drop column' in step_lower:
+                    column_name = step.split("'")[1].strip()
+                    if column_name in cleaned_df.columns:
+                        cleaned_df.drop(columns=column_name, inplace=True)
+                        actions_applied.append(f"Column '{column_name}' removed clearly.")
+
+                # Fill missing numeric values
                 elif 'fill missing values' in step_lower:
                     numeric_cols = cleaned_df.select_dtypes(include=['float64', 'int64']).columns
                     for col in numeric_cols:
                         median = cleaned_df[col].median()
                         cleaned_df[col].fillna(median, inplace=True)
-                    actions_applied.append("Filled missing numerical values clearly with median.")
+                    actions_applied.append("Missing numeric values filled clearly with median.")
 
-                # One-hot encoding
+                # Remove rows with null values
+                elif 'remove rows with missing' in step_lower or 'remove rows with null' in step_lower:
+                    before_rows = len(cleaned_df)
+                    cleaned_df.dropna(inplace=True)
+                    removed_rows = before_rows - len(cleaned_df)
+                    actions_applied.append(f"Removed {removed_rows} rows with missing values clearly.")
+
+                # Remove rows with special/invalid characters explicitly
+                elif 'remove rows with invalid' in step_lower or 'special characters' in step_lower:
+                    cols_with_special = cleaned_df.select_dtypes(include=['object']).columns
+                    before_rows = len(cleaned_df)
+                    for col in cols_with_special:
+                        cleaned_df = cleaned_df[cleaned_df[col].str.match("^[a-zA-Z0-9_ ]*$", na=False)]
+                    removed_rows = before_rows - len(cleaned_df)
+                    actions_applied.append(f"Removed {removed_rows} rows containing invalid/special characters clearly.")
+
+                # One-hot encoding categorical variables
                 elif 'one-hot encoding' in step_lower:
                     cat_cols = cleaned_df.select_dtypes(include=['object', 'category']).columns
                     cleaned_df = pd.get_dummies(cleaned_df, columns=cat_cols, drop_first=True)
-                    actions_applied.append("Applied one-hot encoding to categorical variables.")
+                    actions_applied.append("Categorical columns encoded with one-hot encoding clearly.")
 
-                # Remove duplicates
-                elif 'remove duplicates' in step_lower:
-                    before = len(cleaned_df)
-                    cleaned_df.drop_duplicates(inplace=True)
-                    removed = before - len(cleaned_df)
-                    actions_applied.append(f"Removed {removed} duplicate rows.")
+            st.success("✅ Data cleaned with actual changes clearly!")
 
-                # Standardize numerical columns
-                elif 'standardize numerical columns' in step_lower:
-                    numeric_cols = cleaned_df.select_dtypes(include=['float64', 'int64']).columns
-                    cleaned_df[numeric_cols] = (cleaned_df[numeric_cols] - cleaned_df[numeric_cols].mean()) / cleaned_df[numeric_cols].std()
-                    actions_applied.append("Standardized numerical columns.")
-
-            st.success("✅ Cleaning applied successfully!")
-
-            st.subheader("📝 Applied Actions Clearly:")
+            st.subheader("📝 Actions Applied Clearly:")
             for action in actions_applied:
                 st.info(action)
 
-            st.subheader("✨ Cleaned Data Preview:")
+            st.subheader("✨ Fully Cleaned Data:")
             st.dataframe(cleaned_df.head(), use_container_width=True)
 
             buffer = io.BytesIO()
@@ -117,7 +113,7 @@ if uploaded_file:
 
             # Insights & Visualization
             with st.spinner('Generating insights clearly...'):
-                prompt_insights = f"Summarize key insights clearly from:\n{cleaned_df.head().to_string()}"
+                prompt_insights = f"Summarize key insights clearly from dataset:\n{cleaned_df.head().to_string()}"
 
                 completion_insights = client.chat.completions.create(
                     model="gpt-3.5-turbo",
@@ -125,7 +121,7 @@ if uploaded_file:
                 )
 
                 insights = completion_insights.choices[0].message.content
-                st.subheader("📈 AI Insights (Clearly):")
+                st.subheader("📈 AI-generated Insights (Clearly):")
                 st.write(insights)
 
                 numeric_columns = cleaned_df.select_dtypes(include=['int64', 'float64']).columns
@@ -133,10 +129,3 @@ if uploaded_file:
                     fig = px.scatter(cleaned_df, x=numeric_columns[0], y=numeric_columns[1],
                                      title=f"{numeric_columns[0]} vs {numeric_columns[1]} (AI Recommended clearly)")
                     st.plotly_chart(fig, use_container_width=True)
-
-    else:
-        st.info("⚠️ Click 'Generate AI Cleaning Suggestions' to start clearly.")
-
-
-
-
