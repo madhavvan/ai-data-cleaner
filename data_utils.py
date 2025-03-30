@@ -1,8 +1,7 @@
 import pandas as pd
 import numpy as np
 from openai import OpenAI
-import os
-from dotenv import load_dotenv
+import streamlit as st
 import re
 from sklearn.preprocessing import LabelEncoder
 import requests
@@ -11,9 +10,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 import joblib
 
-import streamlit as st
-from openai import OpenAI
-
+# Load OpenAI API key from Streamlit secrets
 api_key = st.secrets.get("OPENAI_API_KEY", None)
 client = OpenAI(api_key=api_key) if api_key else None
 
