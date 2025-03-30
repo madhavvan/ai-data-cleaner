@@ -124,7 +124,6 @@ def render_clean_page():
         enrich_container = st.container()
         ai_container = st.container()
         ml_container = st.container()
-        template_container = st.container()
 
         with manual_container:
             st.subheader("Manual Column Dropping")
@@ -190,45 +189,6 @@ def render_clean_page():
                                             help="Columns to use as predictors.")
                 train_ml = st.checkbox("Train and Deploy ML Model", help="Generate a prediction app.")
 
-        with template_container:
-            with st.expander("Save/Apply Cleaning Templates", expanded=False):
-                template_name = st.text_input("Template Name", "", help="Enter a name to save this cleaning configuration as a template.")
-                if st.button("Save as Template") and template_name:
-                    template = {
-                        "columns_to_drop": columns_to_drop,
-                        "selected_suggestions": selected_suggestions,
-                        "options": options,
-                        "replace_value": replace_value,
-                        "replace_with": replace_with,
-                        "replace_scope": replace_scope,
-                        "encode_cols": encode_cols,
-                        "encode_method": encode_method,
-                        "enrich_col": enrich_col,
-                        "train_ml": train_ml,
-                        "target_col": target_col,
-                        "feature_cols": feature_cols
-                    }
-                    st.session_state.cleaning_templates[template_name] = template
-                    st.success(f"Saved template '{template_name}'")
-
-                if st.session_state.cleaning_templates:
-                    template_to_apply = st.selectbox("Apply Saved Template", ["None"] + list(st.session_state.cleaning_templates.keys()))
-                    if template_to_apply != "None":
-                        template = st.session_state.cleaning_templates[template_to_apply]
-                        columns_to_drop = template["columns_to_drop"]
-                        selected_suggestions = template["selected_suggestions"]
-                        options = template["options"]
-                        replace_value = template["replace_value"]
-                        replace_with = template["replace_with"]
-                        replace_scope = template["replace_scope"]
-                        encode_cols = template["encode_cols"]
-                        encode_method = template["encode_method"]
-                        enrich_col = template["enrich_col"]
-                        train_ml = template["train_ml"]
-                        target_col = template["target_col"]
-                        feature_cols = template["feature_cols"]
-                        st.info(f"Applied template '{template_to_apply}'")
-
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
             preview_button = st.form_submit_button(label="Preview Changes")
@@ -283,6 +243,82 @@ def render_clean_page():
                 # Refresh AI suggestions for the updated dataset
                 with st.spinner("Refreshing AI suggestions..."):
                     st.session_state.suggestions = get_cleaning_suggestions(cleaned_df)
+
+    # Separate form for saving and applying templates
+    with st.expander("Save/Apply Cleaning Templates", expanded=False):
+        st.subheader("Save/Apply Cleaning Templates")
+        with st.form(key="template_form"):
+            template_name = st.text_input("Template Name", "", help="Enter a name to save this cleaning configuration as a template.")
+            save_template_button = st.form_submit_button("Save as Template")
+
+            if save_template_button and template_name:
+                template = {
+                    "columns_to_drop": columns_to_drop,
+                    "selected_suggestions": selected_suggestions,
+                    "options": options,
+                    "replace_value": replace_value,
+                    "replace_with": replace_with,
+                    "replace_scope": replace_scope,
+                    "encode_cols": encode_cols,
+                    "encode_method": encode_method,
+                    "enrich_col": enrich_col,
+                    "train_ml": train_ml,
+                    "target_col": target_col,
+                    "feature_cols": feature_cols
+                }
+                st.session_state.cleaning_templates[template_name] = template
+                st.success(f"Saved template '{template_name}'")
+
+        if st.session_state.cleaning_templates:
+            with st.form(key="apply_template_form"):
+                template_to_apply = st.selectbox("Apply Saved Template", ["None"] + list(st.session_state.cleaning_templates.keys()))
+                apply_template_button = st.form_submit_button("Apply Template")
+
+                if apply_template_button and template_to_apply != "None":
+                    template = st.session_state.cleaning_templates[template_to_apply]
+                    with st.spinner("Applying template..."):
+                        cleaned_df, logs = apply_cleaning_operations(
+                            df, 
+                            selected_suggestions=template["selected_suggestions"],
+                            columns_to_drop=template["columns_to_drop"],
+                            options=template["options"],
+                            replace_value=template["replace_value"],
+                            replace_with=template["replace_with"],
+                            replace_scope=template["replace_scope"],
+                            encode_cols=template["encode_cols"],
+                            encode_method=template["encode_method"],
+                            auto_clean=False,
+                            enrich_col=template["enrich_col"],
+                            enrich_api_key=enrich_api_key,
+                            train_ml=template["train_ml"],
+                            target_col=template["target_col"],
+                            feature_cols=template["feature_cols"]
+                        )
+
+                        # Save the current state for undo
+                        if st.session_state.cleaned_df is not None:
+                            st.session_state.previous_states.append((st.session_state.cleaned_df.copy(), st.session_state.logs.copy()))
+                        else:
+                            st.session_state.previous_states.append((st.session_state.df.copy(), []))
+                        if len(st.session_state.previous_states) > 5:
+                            st.session_state.previous_states.pop(0)
+
+                        # Clear redo stack on new action
+                        st.session_state.redo_states = []
+
+                        # Update cleaned_df and logs
+                        st.session_state.cleaned_df = cleaned_df
+                        st.session_state.logs = logs
+
+                        # Update cleaning history
+                        st.session_state.cleaning_history.append({
+                            "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                            "logs": logs + [f"Applied template '{template_to_apply}'"]
+                        })
+
+                        # Refresh AI suggestions for the updated dataset
+                        st.session_state.suggestions = get_cleaning_suggestions(cleaned_df)
+                        st.success(f"Applied template '{template_to_apply}'")
 
     # Undo/Redo Buttons
     col1, col2 = st.columns(2)
