@@ -11,8 +11,10 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 import joblib
 
-load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY")
+import streamlit as st
+from openai import OpenAI
+
+api_key = st.secrets.get("OPENAI_API_KEY", None)
 client = OpenAI(api_key=api_key) if api_key else None
 
 def detect_outliers(df, col):
