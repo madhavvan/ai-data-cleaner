@@ -19,21 +19,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Load OpenAI API key from Streamlit secrets
-api_key = st.secrets.get("OPENAI_API_KEY", None)
-
-# Initialize OpenAI client with explicit configuration
+api_key = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 if api_key:
     try:
-        client = OpenAI(
-            api_key=api_key,
-            http_client=None  # Use default HTTP client without custom proxy settings
-        )
-    except Exception as e:
+        client = OpenAI(api_key=api_key)
+        logger.info("OpenAI client initialized successfully.")
+    except TypeError as e:
         logger.error(f"Failed to initialize OpenAI client: {str(e)}")
         client = None
 else:
-    logger.warning("OpenAI API key not found in Streamlit secrets. AI-driven features will be disabled.")
     client = None
+    logger.error("OpenAI API key not found. Set it in secrets.toml or as OPENAI_API_KEY env variable.")
 
 def detect_outliers(df, col):
     """Detect outliers in a numeric column using IQR method."""
