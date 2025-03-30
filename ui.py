@@ -36,9 +36,9 @@ def render_upload_page():
     if 'cleaning_templates' not in st.session_state:
         st.session_state.cleaning_templates = {}
 
-    # Display current dataset if it exists
+    # Display current original dataset if it exists
     if st.session_state.df is not None:
-        st.subheader("Current Dataset Preview (First 10 Rows)")
+        st.subheader("Original Dataset Preview (First 10 Rows)")
         st.dataframe(st.session_state.df.head(10))
         st.subheader("Basic Metadata")
         score = calculate_health_score(st.session_state.df)
@@ -47,6 +47,7 @@ def render_upload_page():
         st.write(f"Missing Values: {st.session_state.df.isna().sum().sum()}")
         st.progress(score / 100)
         st.write(f"Dataset Health Score: {score}/100")
+        st.info("This is the original dataset. Cleaning operations are applied to a working copy.")
 
         # Warn user about overwriting
         st.warning("Uploading a new file will overwrite the current dataset and reset all cleaning operations. Proceed with caution!")
@@ -197,52 +198,64 @@ def render_clean_page():
         with col3:
             auto_clean_button = st.form_submit_button(label="Auto-Clean")
 
-    # Process cleaning operations
-    if (preview_button or apply_button or auto_clean_button) and (selected_suggestions or columns_to_drop or replace_value or encode_cols or enrich_col != "None" or auto_clean_button or train_ml):
-        with st.spinner("Processing..."):
-            cleaned_df, logs = apply_cleaning_operations(
-                df, selected_suggestions, columns_to_drop, options, 
-                replace_value, replace_with if replace_with != "NaN" else "NaN", 
-                replace_scope, encode_cols, encode_method, auto_clean=auto_clean_button, 
-                enrich_col=enrich_col if enrich_col != "None" else None, enrich_api_key=enrich_api_key,
-                train_ml=train_ml, target_col=target_col, feature_cols=feature_cols
-            )
-            
-            if preview_button:
-                st.subheader("Preview of Changes")
-                st.write("Before:")
-                st.dataframe(df.head(10))
-                st.write("After:")
-                st.dataframe(cleaned_df.head(10))
-                st.write("Preview Logs:")
-                for log in logs:
-                    st.write(f"- {log}")
-            
-            if apply_button or auto_clean_button:
-                # Save the current state for undo
-                if st.session_state.cleaned_df is not None:
-                    st.session_state.previous_states.append((st.session_state.cleaned_df.copy(), st.session_state.logs.copy()))
-                else:
-                    st.session_state.previous_states.append((st.session_state.df.copy(), []))
-                if len(st.session_state.previous_states) > 5:
-                    st.session_state.previous_states.pop(0)
+    # Process cleaning operations with validation
+    if preview_button or apply_button or auto_clean_button:
+        operations_selected = (
+            selected_suggestions or
+            columns_to_drop or
+            (replace_value and replace_with) or
+            encode_cols or
+            (enrich_col != "None" and enrich_api_key) or
+            auto_clean_button or
+            (train_ml and target_col and feature_cols)
+        )
+        if not operations_selected:
+            st.warning("Please select at least one cleaning operation or ML deployment with valid parameters.")
+        else:
+            with st.spinner("Processing..."):
+                cleaned_df, logs = apply_cleaning_operations(
+                    df, selected_suggestions, columns_to_drop, options, 
+                    replace_value, replace_with if replace_with != "NaN" else "NaN", 
+                    replace_scope, encode_cols, encode_method, auto_clean=auto_clean_button, 
+                    enrich_col=enrich_col if enrich_col != "None" else None, enrich_api_key=enrich_api_key,
+                    train_ml=train_ml, target_col=target_col, feature_cols=feature_cols
+                )
                 
-                # Clear redo stack on new action
-                st.session_state.redo_states = []
+                if preview_button:
+                    st.subheader("Preview of Changes")
+                    st.write("Before:")
+                    st.dataframe(df.head(10))
+                    st.write("After:")
+                    st.dataframe(cleaned_df.head(10))
+                    st.write("Preview Logs:")
+                    for log in logs:
+                        st.write(f"- {log}")
+                
+                if apply_button or auto_clean_button:
+                    # Save the current state for undo
+                    if st.session_state.cleaned_df is not None:
+                        st.session_state.previous_states.append((st.session_state.cleaned_df.copy(), st.session_state.logs.copy()))
+                    else:
+                        st.session_state.previous_states.append((st.session_state.df.copy(), []))
+                    if len(st.session_state.previous_states) > 5:
+                        st.session_state.previous_states.pop(0)
+                    
+                    # Clear redo stack on new action
+                    st.session_state.redo_states = []
 
-                # Update cleaned_df and logs
-                st.session_state.cleaned_df = cleaned_df
-                st.session_state.logs = logs
+                    # Update cleaned_df and logs
+                    st.session_state.cleaned_df = cleaned_df
+                    st.session_state.logs = logs
 
-                # Update cleaning history
-                st.session_state.cleaning_history.append({
-                    "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    "logs": logs
-                })
+                    # Update cleaning history
+                    st.session_state.cleaning_history.append({
+                        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        "logs": logs
+                    })
 
-                # Refresh AI suggestions for the updated dataset
-                with st.spinner("Refreshing AI suggestions..."):
-                    st.session_state.suggestions = get_cleaning_suggestions(cleaned_df)
+                    # Refresh AI suggestions for the updated dataset
+                    with st.spinner("Refreshing AI suggestions..."):
+                        st.session_state.suggestions = get_cleaning_suggestions(cleaned_df)
 
     # Separate form for saving and applying templates
     with st.expander("Save/Apply Cleaning Templates", expanded=False):
