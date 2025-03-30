@@ -131,22 +131,25 @@ def render_clean_page():
     st.subheader("Smart Workflow Automation")
     if st.button("Run Smart Workflow"):
         with st.spinner("Generating and executing workflow..."):
-            workflow = suggest_workflow(df)
-            st.write("### Suggested Workflow:")
-            for step in workflow:
-                st.write(f"- {step}")
-            # Auto-apply cleaning suggestions
-            cleaned_df, logs = apply_cleaning_operations(
-                df, st.session_state.suggestions, [], {}, "", "", "", [], "", auto_clean=True
-            )
-            st.session_state.cleaned_df = cleaned_df
-            st.session_state.logs = logs
-            st.session_state.cleaning_history.append({
-                "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                "logs": logs + ["Executed Smart Workflow"]
-            })
-            st.session_state.suggestions = get_cached_suggestions(cleaned_df)
-            st.success("Smart Workflow executed successfully!")
+            try:
+                workflow = suggest_workflow(df)
+                st.write("### Suggested Workflow:")
+                for step in workflow:
+                    st.write(f"- {step}")
+                # Auto-apply cleaning suggestions
+                cleaned_df, logs = apply_cleaning_operations(
+                    df, st.session_state.suggestions, [], {}, "", "", "", [], "", auto_clean=True
+                )
+                st.session_state.cleaned_df = cleaned_df
+                st.session_state.logs = logs
+                st.session_state.cleaning_history.append({
+                    "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    "logs": logs + ["Executed Smart Workflow"]
+                })
+                st.session_state.suggestions = get_cached_suggestions(cleaned_df)
+                st.success("Smart Workflow executed successfully!")
+            except Exception as e:
+                st.error(f"Error executing smart workflow: {str(e)}")
 
     # Chatbot Interface
     st.subheader("AI Data Assistant")
@@ -242,9 +245,12 @@ def render_clean_page():
                                             help="Detect outliers using AI.")
                 if anomaly_cols:
                     with st.spinner("Detecting anomalies..."):
-                        anomalies = detect_anomalies(df, anomaly_cols)
-                        st.write("Anomalies Detected:")
-                        st.json(anomalies)
+                        try:
+                            anomalies = detect_anomalies(df, anomaly_cols)
+                            st.write("Anomalies Detected:")
+                            st.json(anomalies)
+                        except Exception as e:
+                            st.error(f"Error detecting anomalies: {str(e)}")
 
         with ml_container:
             with st.expander("One-Click ML Deployment", expanded=False):
@@ -279,49 +285,52 @@ def render_clean_page():
             st.warning("Please select at least one cleaning operation or ML deployment with valid parameters.")
         else:
             with st.spinner("Processing..."):
-                cleaned_df, logs = apply_cleaning_operations(
-                    df, selected_suggestions, columns_to_drop, options, 
-                    replace_value, replace_with if replace_with != "NaN" else "NaN", 
-                    replace_scope, encode_cols, encode_method, auto_clean=auto_clean_button, 
-                    enrich_col=enrich_col if enrich_col != "None" else None, enrich_api_key=enrich_api_key,
-                    train_ml=train_ml, target_col=target_col, feature_cols=feature_cols
-                )
-                
-                if preview_button:
-                    st.subheader("Preview of Changes")
-                    st.write("Before:")
-                    st.dataframe(df.head(10))
-                    st.write("After:")
-                    st.dataframe(cleaned_df.head(10))
-                    st.write("Preview Logs:")
-                    for log in logs:
-                        st.write(f"- {log}")
-                
-                if apply_button or auto_clean_button:
-                    # Save the current state for undo
-                    if st.session_state.cleaned_df is not None:
-                        st.session_state.previous_states.append((st.session_state.cleaned_df.copy(), st.session_state.logs.copy()))
-                    else:
-                        st.session_state.previous_states.append((st.session_state.df.copy(), []))
-                    if len(st.session_state.previous_states) > 5:
-                        st.session_state.previous_states.pop(0)
+                try:
+                    cleaned_df, logs = apply_cleaning_operations(
+                        df, selected_suggestions, columns_to_drop, options, 
+                        replace_value, replace_with if replace_with != "NaN" else "NaN", 
+                        replace_scope, encode_cols, encode_method, auto_clean=auto_clean_button, 
+                        enrich_col=enrich_col if enrich_col != "None" else None, enrich_api_key=enrich_api_key,
+                        train_ml=train_ml, target_col=target_col, feature_cols=feature_cols
+                    )
                     
-                    # Clear redo stack on new action
-                    st.session_state.redo_states = []
+                    if preview_button:
+                        st.subheader("Preview of Changes")
+                        st.write("Before:")
+                        st.dataframe(df.head(10))
+                        st.write("After:")
+                        st.dataframe(cleaned_df.head(10))
+                        st.write("Preview Logs:")
+                        for log in logs:
+                            st.write(f"- {log}")
+                
+                    if apply_button or auto_clean_button:
+                        # Save the current state for undo
+                        if st.session_state.cleaned_df is not None:
+                            st.session_state.previous_states.append((st.session_state.cleaned_df.copy(), st.session_state.logs.copy()))
+                        else:
+                            st.session_state.previous_states.append((st.session_state.df.copy(), []))
+                        if len(st.session_state.previous_states) > 5:
+                            st.session_state.previous_states.pop(0)
+                        
+                        # Clear redo stack on new action
+                        st.session_state.redo_states = []
 
-                    # Update cleaned_df and logs
-                    st.session_state.cleaned_df = cleaned_df
-                    st.session_state.logs = logs
+                        # Update cleaned_df and logs
+                        st.session_state.cleaned_df = cleaned_df
+                        st.session_state.logs = logs
 
-                    # Update cleaning history
-                    st.session_state.cleaning_history.append({
-                        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                        "logs": logs
-                    })
+                        # Update cleaning history
+                        st.session_state.cleaning_history.append({
+                            "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                            "logs": logs
+                        })
 
-                    # Refresh AI suggestions for the updated dataset
-                    with st.spinner("Refreshing AI suggestions..."):
-                        st.session_state.suggestions = get_cached_suggestions(cleaned_df)
+                        # Refresh AI suggestions for the updated dataset
+                        with st.spinner("Refreshing AI suggestions..."):
+                            st.session_state.suggestions = get_cached_suggestions(cleaned_df)
+                except Exception as e:
+                    st.error(f"Error processing cleaning operations: {str(e)}")
 
     # Separate form for saving and applying templates
     with st.expander("Save/Apply Cleaning Templates", expanded=False):
@@ -356,48 +365,51 @@ def render_clean_page():
                 if apply_template_button and template_to_apply != "None":
                     template = st.session_state.cleaning_templates[template_to_apply]
                     with st.spinner("Applying template..."):
-                        cleaned_df, logs = apply_cleaning_operations(
-                            df, 
-                            selected_suggestions=template["selected_suggestions"],
-                            columns_to_drop=template["columns_to_drop"],
-                            options=template["options"],
-                            replace_value=template["replace_value"],
-                            replace_with=template["replace_with"],
-                            replace_scope=template["replace_scope"],
-                            encode_cols=template["encode_cols"],
-                            encode_method=template["encode_method"],
-                            auto_clean=False,
-                            enrich_col=template["enrich_col"],
-                            enrich_api_key=enrich_api_key,
-                            train_ml=template["train_ml"],
-                            target_col=template["target_col"],
-                            feature_cols=template["feature_cols"]
-                        )
+                        try:
+                            cleaned_df, logs = apply_cleaning_operations(
+                                df, 
+                                selected_suggestions=template["selected_suggestions"],
+                                columns_to_drop=template["columns_to_drop"],
+                                options=template["options"],
+                                replace_value=template["replace_value"],
+                                replace_with=template["replace_with"],
+                                replace_scope=template["replace_scope"],
+                                encode_cols=template["encode_cols"],
+                                encode_method=template["encode_method"],
+                                auto_clean=False,
+                                enrich_col=template["enrich_col"],
+                                enrich_api_key=enrich_api_key,
+                                train_ml=template["train_ml"],
+                                target_col=template["target_col"],
+                                feature_cols=template["feature_cols"]
+                            )
 
-                        # Save the current state for undo
-                        if st.session_state.cleaned_df is not None:
-                            st.session_state.previous_states.append((st.session_state.cleaned_df.copy(), st.session_state.logs.copy()))
-                        else:
-                            st.session_state.previous_states.append((st.session_state.df.copy(), []))
-                        if len(st.session_state.previous_states) > 5:
-                            st.session_state.previous_states.pop(0)
+                            # Save the current state for undo
+                            if st.session_state.cleaned_df is not None:
+                                st.session_state.previous_states.append((st.session_state.cleaned_df.copy(), st.session_state.logs.copy()))
+                            else:
+                                st.session_state.previous_states.append((st.session_state.df.copy(), []))
+                            if len(st.session_state.previous_states) > 5:
+                                st.session_state.previous_states.pop(0)
 
-                        # Clear redo stack on new action
-                        st.session_state.redo_states = []
+                            # Clear redo stack on new action
+                            st.session_state.redo_states = []
 
-                        # Update cleaned_df and logs
-                        st.session_state.cleaned_df = cleaned_df
-                        st.session_state.logs = logs
+                            # Update cleaned_df and logs
+                            st.session_state.cleaned_df = cleaned_df
+                            st.session_state.logs = logs
 
-                        # Update cleaning history
-                        st.session_state.cleaning_history.append({
-                            "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                            "logs": logs + [f"Applied template '{template_to_apply}'"]
-                        })
+                            # Update cleaning history
+                            st.session_state.cleaning_history.append({
+                                "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                "logs": logs + [f"Applied template '{template_to_apply}'"]
+                            })
 
-                        # Refresh AI suggestions for the updated dataset
-                        st.session_state.suggestions = get_cached_suggestions(cleaned_df)
-                        st.success(f"Applied template '{template_to_apply}'")
+                            # Refresh AI suggestions for the updated dataset
+                            st.session_state.suggestions = get_cached_suggestions(cleaned_df)
+                            st.success(f"Applied template '{template_to_apply}'")
+                        except Exception as e:
+                            st.error(f"Error applying template: {str(e)}")
 
     # Undo/Redo Buttons
     col1, col2 = st.columns(2)
@@ -481,10 +493,13 @@ def render_insights_page():
     df = st.session_state.cleaned_df if st.session_state.cleaned_df is not None else st.session_state.df
 
     with st.spinner("Generating insights..."):
-        insights = get_insights(df)
-        st.subheader("Key Insights")
-        for insight in insights:
-            st.write(f"- {insight}")
+        try:
+            insights = get_insights(df)
+            st.subheader("Key Insights")
+            for insight in insights:
+                st.write(f"- {insight}")
+        except Exception as e:
+            st.error(f"Error generating insights: {str(e)}")
 
 def render_predictive_page():
     """Render the predictive analytics page with ML model training, forecasting, and clustering."""
@@ -504,18 +519,21 @@ def render_predictive_page():
     task_type = st.selectbox("Task Type", ["classification", "regression"])
     if st.button("Generate Synthetic Data"):
         with st.spinner("Generating synthetic data..."):
-            synthetic_df = generate_synthetic_data(df, task_type)
-            st.session_state.cleaned_df = synthetic_df
-            st.session_state.suggestions = get_cached_suggestions(synthetic_df)
-            st.session_state.cleaning_history.append({
-                "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                "logs": ["Generated synthetic data"]
-            })
-            st.write("Synthetic Dataset Preview:")
-            st.dataframe(synthetic_df.head(10))
-            st.markdown(get_download_link(synthetic_df, 
-                                        f"synthetic_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
-                       unsafe_allow_html=True)
+            try:
+                synthetic_df = generate_synthetic_data(df, task_type)
+                st.session_state.cleaned_df = synthetic_df
+                st.session_state.suggestions = get_cached_suggestions(synthetic_df)
+                st.session_state.cleaning_history.append({
+                    "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    "logs": ["Generated synthetic data"]
+                })
+                st.write("Synthetic Dataset Preview:")
+                st.dataframe(synthetic_df.head(10))
+                st.markdown(get_download_link(synthetic_df, 
+                                            f"synthetic_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
+                           unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"Error generating synthetic data: {str(e)}")
 
     # Time Series Forecasting
     st.subheader("Time Series Forecasting")
@@ -525,12 +543,15 @@ def render_predictive_page():
         periods = st.slider("Forecast periods", 1, 30, 5)
         if st.button("Forecast"):
             with st.spinner("Forecasting..."):
-                forecast_df = forecast_time_series(df, forecast_col, periods)
-                st.write("Forecasted Values:")
-                st.dataframe(forecast_df)
-                st.markdown(get_download_link(forecast_df, 
-                                            f"forecast_{forecast_col}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
-                           unsafe_allow_html=True)
+                try:
+                    forecast_df = forecast_time_series(df, forecast_col, periods)
+                    st.write("Forecasted Values:")
+                    st.dataframe(forecast_df)
+                    st.markdown(get_download_link(forecast_df, 
+                                                f"forecast_{forecast_col}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
+                               unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Error forecasting time series: {str(e)}")
     else:
         st.info("No datetime columns found for time series forecasting.")
 
@@ -541,16 +562,19 @@ def render_predictive_page():
         period = st.slider("Period for decomposition", 1, 30, 12)
         if st.button("Decompose Time Series"):
             with st.spinner("Decomposing time series..."):
-                decomposition = analyze_time_series(df, decompose_col, period)
-                if decomposition:
-                    st.write("Trend Component:")
-                    st.line_chart(decomposition.get("trend"))
-                    st.write("Seasonal Component:")
-                    st.line_chart(decomposition.get("seasonal"))
-                    st.write("Residual Component:")
-                    st.line_chart(decomposition.get("residual"))
-                else:
-                    st.error("Failed to decompose time series. Ensure the column has sufficient data.")
+                try:
+                    decomposition = analyze_time_series(df, decompose_col, period)
+                    if decomposition:
+                        st.write("Trend Component:")
+                        st.line_chart(decomposition.get("trend"))
+                        st.write("Seasonal Component:")
+                        st.line_chart(decomposition.get("seasonal"))
+                        st.write("Residual Component:")
+                        st.line_chart(decomposition.get("residual"))
+                    else:
+                        st.error("Failed to decompose time series. Ensure the column has sufficient data.")
+                except Exception as e:
+                    st.error(f"Error decomposing time series: {str(e)}")
     else:
         st.info("No datetime columns found for time series decomposition.")
 
@@ -564,16 +588,19 @@ def render_predictive_page():
             st.warning("Please select at least two columns for clustering.")
         else:
             with st.spinner("Performing clustering..."):
-                labels = perform_clustering(df, cluster_cols, n_clusters)
-                df['Cluster'] = labels
-                st.session_state.cleaned_df = df
-                st.session_state.suggestions = get_cached_suggestions(df)
-                st.session_state.cleaning_history.append({
-                    "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    "logs": ["Performed clustering"]
-                })
-                st.write("Dataset with Cluster Labels:")
-                st.dataframe(df.head(10))
-                st.markdown(get_download_link(df, 
-                                            f"clustered_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
-                           unsafe_allow_html=True)
+                try:
+                    labels = perform_clustering(df, cluster_cols, n_clusters)
+                    df['Cluster'] = labels
+                    st.session_state.cleaned_df = df
+                    st.session_state.suggestions = get_cached_suggestions(df)
+                    st.session_state.cleaning_history.append({
+                        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        "logs": ["Performed clustering"]
+                    })
+                    st.write("Dataset with Cluster Labels:")
+                    st.dataframe(df.head(10))
+                    st.markdown(get_download_link(df, 
+                                                f"clustered_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
+                               unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Error performing clustering: {str(e)}")

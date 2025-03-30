@@ -527,9 +527,12 @@ def apply_cleaning_operations(df, selected_suggestions, columns_to_drop, options
             # Apply feature engineering before training
             cleaned_df = auto_feature_engineering(cleaned_df, feature_cols)
             feature_cols = [col for col in cleaned_df.columns if col != target_col]
-            score = train_ml_model(cleaned_df, target_col, feature_cols, task_type="classification")
-            app_path = generate_ml_app(cleaned_df, target_col, feature_cols)
-            logs.append(f"Trained ML model with accuracy {score:.2f}. Generated app at {app_path}")
+            model, score, explainer, shap_values, X_test = train_ml_model(cleaned_df, target_col, feature_cols, task_type="classification")
+            if score is not None:
+                app_path = generate_ml_app(cleaned_df, target_col, feature_cols)
+                logs.append(f"Trained ML model with accuracy {score:.2f}. Generated app at {app_path}")
+            else:
+                logs.append("ML model training failed.")
         
         return cleaned_df, logs
     except Exception as e:

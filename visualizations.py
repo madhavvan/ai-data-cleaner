@@ -1,8 +1,7 @@
 import streamlit as st
 import plotly.express as px
 import pandas as pd
-from data_utils import forecast_time_series,    	    
-
+from data_utils import forecast_time_series
 
 def render_visualization_page(df):
     """Render the visualization page with advanced options."""
