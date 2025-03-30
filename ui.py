@@ -3,7 +3,12 @@ import pandas as pd
 from datetime import datetime
 import base64
 import json
-from data_utils import get_cleaning_suggestions, apply_cleaning_operations, extract_column, calculate_health_score, chat_with_gpt
+from data_utils import get_cleaning_suggestions, apply_cleaning_operations, extract_column, calculate_health_score, chat_with_gpt, detect_anomalies, get_insights, suggest_workflow
+
+# Cache expensive operations
+@st.cache_data
+def get_cached_suggestions(df):
+    return get_cleaning_suggestions(df)
 
 def get_download_link(df, filename):
     """Generate a download link for the cleaned dataset."""
@@ -12,11 +17,11 @@ def get_download_link(df, filename):
     return f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download cleaned dataset</a>'
 
 def render_upload_page():
-    """Render the upload page UI with session persistence."""
+    """Render the upload page UI with session persistence and chunked processing."""
     st.title("📤 Upload Your Dataset")
     st.markdown("<p class='welcome'>Start your data journey here!</p>", unsafe_allow_html=True)
 
-    # Initialize session state variables if not present
+    # Initialize session state variables
     if 'df' not in st.session_state:
         st.session_state.df = None
     if 'cleaned_df' not in st.session_state:
@@ -35,6 +40,10 @@ def render_upload_page():
         st.session_state.cleaning_history = []
     if 'cleaning_templates' not in st.session_state:
         st.session_state.cleaning_templates = {}
+    if 'is_premium' not in st.session_state:
+        st.session_state.is_premium = False  # Simulate user status
+    if 'ai_suggestions_used' not in st.session_state:
+        st.session_state.ai_suggestions_used = 0
 
     # Display current original dataset if it exists
     if st.session_state.df is not None:
@@ -52,12 +61,21 @@ def render_upload_page():
         # Warn user about overwriting
         st.warning("Uploading a new file will overwrite the current dataset and reset all cleaning operations. Proceed with caution!")
 
-    # File uploader
+    # File uploader with chunked processing
     uploaded_file = st.file_uploader("Choose a file (CSV or Excel)", type=["csv", "xlsx"], help="Upload a CSV or Excel file to begin.")
-
     if uploaded_file:
         try:
-            df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+            # Check file size (warn if > 50MB)
+            if uploaded_file.size > 50 * 1024 * 1024:  # 50MB in bytes
+                st.warning("File size exceeds 50MB. Using chunked processing to handle large datasets.")
+                if uploaded_file.name.endswith('.csv'):
+                    chunks = pd.read_csv(uploaded_file, chunksize=10000)
+                    df = pd.concat(chunks, ignore_index=True)
+                else:
+                    df = pd.read_excel(uploaded_file)
+            else:
+                df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+
             # Reset session state when a new file is uploaded
             st.session_state.df = df
             st.session_state.cleaned_df = None
@@ -68,6 +86,7 @@ def render_upload_page():
             st.session_state.chat_history = []
             st.session_state.cleaning_history = []
             st.session_state.cleaning_templates = {}
+            st.session_state.ai_suggestions_used = 0
 
             st.subheader("Dataset Preview (First 10 Rows)")
             st.dataframe(df.head(10))
@@ -83,7 +102,7 @@ def render_upload_page():
             st.error(f"Error loading file: {str(e)}")
 
 def render_clean_page():
-    """Render the clean page UI with improved re-editing logic and bonus features."""
+    """Render the clean page UI with advanced features."""
     st.title("🧹 Clean Your Dataset")
     if 'df' not in st.session_state or st.session_state.df is None:
         st.warning("Please upload a dataset first on the Upload page.")
@@ -95,12 +114,33 @@ def render_clean_page():
     # Get AI cleaning suggestions if not already fetched
     if not st.session_state.suggestions:
         with st.spinner("Analyzing dataset with GPT-4o..."):
-            st.session_state.suggestions = get_cleaning_suggestions(df)
+            st.session_state.suggestions = get_cached_suggestions(df)
     
     st.subheader("Dataset Health")
     score = calculate_health_score(df)
     st.progress(score / 100)
     st.write(f"Current Health Score: {score}/100")
+
+    # Smart Workflow Automation
+    st.subheader("Smart Workflow Automation")
+    if st.button("Run Smart Workflow"):
+        with st.spinner("Generating and executing workflow..."):
+            workflow = suggest_workflow(df)
+            st.write("### Suggested Workflow:")
+            for step in workflow:
+                st.write(f"- {step}")
+            # Auto-apply cleaning suggestions
+            cleaned_df, logs = apply_cleaning_operations(
+                df, st.session_state.suggestions, [], {}, "", "", "", [], "", auto_clean=True
+            )
+            st.session_state.cleaned_df = cleaned_df
+            st.session_state.logs = logs
+            st.session_state.cleaning_history.append({
+                "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "logs": logs + ["Executed Smart Workflow"]
+            })
+            st.session_state.suggestions = get_cached_suggestions(cleaned_df)
+            st.success("Smart Workflow executed successfully!")
 
     # Chatbot Interface
     st.subheader("AI Data Assistant")
@@ -124,6 +164,7 @@ def render_clean_page():
         encode_container = st.container()
         enrich_container = st.container()
         ai_container = st.container()
+        anomaly_container = st.container()
         ml_container = st.container()
 
         with manual_container:
@@ -157,31 +198,48 @@ def render_clean_page():
                                         help="Select a column to enrich with external data.")
                 enrich_api_key = st.text_input("Google API Key (for geolocation)", type="password", 
                                              help="Enter your Google Maps API key.")
+                if enrich_col != "None" and not enrich_api_key:
+                    st.warning("Google API Key is required for data enrichment.")
         
         with ai_container:
             with st.expander("AI Cleaning Suggestions", expanded=True):
-                selected_suggestions = []
-                options = {}
-                for suggestion, explanation in st.session_state.suggestions:
-                    if st.checkbox(f"{suggestion} - {explanation}", key=suggestion):
-                        selected_suggestions.append((suggestion, explanation))
-                        if "Handle special characters" in suggestion:
-                            options["special_chars"] = st.radio("Action for special characters", 
-                                                              ("Drop them", "Replace with underscores"), 
-                                                              key="special_chars_opt")
-                        elif "Fill missing values" in suggestion:
-                            col = extract_column(suggestion)
-                            if col and col in df.columns and df[col].dtype in ['int64', 'float64']:
-                                options[f"fill_{col}"] = st.radio(f"Fill method for {col}", 
-                                                                ["mean", "median", "mode"], 
-                                                                key=f"fill_opt_{col}")
-                        elif "Handle outliers" in suggestion:
-                            col = extract_column(suggestion)
-                            if col and col in df.columns:
-                                options[f"outlier_{col}"] = st.radio(f"Action for outliers in {col}", 
-                                                                   ("Remove", "Cap at bounds"), 
-                                                                   key=f"outlier_opt_{col}")
+                if not st.session_state.is_premium and st.session_state.ai_suggestions_used >= 5:
+                    st.warning("You’ve reached the free tier limit for AI suggestions. Upgrade to Premium for unlimited access ($5/month)!")
+                else:
+                    selected_suggestions = []
+                    options = {}
+                    for suggestion, explanation in st.session_state.suggestions:
+                        if st.checkbox(f"{suggestion} - {explanation}", key=suggestion):
+                            selected_suggestions.append((suggestion, explanation))
+                            st.session_state.ai_suggestions_used += 1
+                            if "Handle special characters" in suggestion:
+                                options["special_chars"] = st.radio("Action for special characters", 
+                                                                  ("Drop them", "Replace with underscores"), 
+                                                                  key="special_chars_opt")
+                            elif "Fill missing values" in suggestion:
+                                col = extract_column(suggestion)
+                                if col and col in df.columns and df[col].dtype in ['int64', 'float64']:
+                                    options[f"fill_{col}"] = st.radio(f"Fill method for {col}", 
+                                                                    ["mean", "median", "mode"], 
+                                                                    key=f"fill_opt_{col}")
+                            elif "Handle outliers" in suggestion:
+                                col = extract_column(suggestion)
+                                if col and col in df.columns:
+                                    options[f"outlier_{col}"] = st.radio(f"Action for outliers in {col}", 
+                                                                       ("Remove", "Cap at bounds"), 
+                                                                       key=f"outlier_opt_{col}")
         
+        with anomaly_container:
+            with st.expander("Anomaly Detection", expanded=False):
+                num_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+                anomaly_cols = st.multiselect("Select numerical columns for anomaly detection", num_cols, 
+                                            help="Detect outliers using AI.")
+                if anomaly_cols:
+                    with st.spinner("Detecting anomalies..."):
+                        anomalies = detect_anomalies(df, anomaly_cols)
+                        st.write("Anomalies Detected:")
+                        st.json(anomalies)
+
         with ml_container:
             with st.expander("One-Click ML Deployment", expanded=False):
                 target_col = st.selectbox("Target Column (to predict)", df.columns.tolist(), 
@@ -189,6 +247,8 @@ def render_clean_page():
                 feature_cols = st.multiselect("Feature Columns", df.columns.tolist(), 
                                             help="Columns to use as predictors.")
                 train_ml = st.checkbox("Train and Deploy ML Model", help="Generate a prediction app.")
+                if train_ml and not (target_col and feature_cols):
+                    st.warning("Please select a target column and at least one feature column for ML deployment.")
 
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
@@ -255,7 +315,7 @@ def render_clean_page():
 
                     # Refresh AI suggestions for the updated dataset
                     with st.spinner("Refreshing AI suggestions..."):
-                        st.session_state.suggestions = get_cleaning_suggestions(cleaned_df)
+                        st.session_state.suggestions = get_cached_suggestions(cleaned_df)
 
     # Separate form for saving and applying templates
     with st.expander("Save/Apply Cleaning Templates", expanded=False):
@@ -330,24 +390,22 @@ def render_clean_page():
                         })
 
                         # Refresh AI suggestions for the updated dataset
-                        st.session_state.suggestions = get_cleaning_suggestions(cleaned_df)
+                        st.session_state.suggestions = get_cached_suggestions(cleaned_df)
                         st.success(f"Applied template '{template_to_apply}'")
 
     # Undo/Redo Buttons
     col1, col2 = st.columns(2)
     with col1:
         if st.session_state.get('previous_states') and st.button("Undo Last Cleaning", help="Revert to the previous state"):
-            # Save current state for redo
             current_state = (st.session_state.cleaned_df.copy(), st.session_state.logs.copy())
             st.session_state.redo_states.append(current_state)
             if len(st.session_state.redo_states) > 5:
                 st.session_state.redo_states.pop(0)
             
-            # Restore previous state
             previous_df, previous_logs = st.session_state.previous_states.pop()
             st.session_state.cleaned_df = previous_df
             st.session_state.logs = previous_logs
-            st.session_state.suggestions = get_cleaning_suggestions(previous_df)
+            st.session_state.suggestions = get_cached_suggestions(previous_df)
             st.session_state.cleaning_history.append({
                 "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "logs": ["Undid last cleaning operation"]
@@ -356,16 +414,14 @@ def render_clean_page():
 
     with col2:
         if st.session_state.get('redo_states') and st.button("Redo Last Cleaning", help="Reapply the last undone state"):
-            # Save current state for undo
             st.session_state.previous_states.append((st.session_state.cleaned_df.copy(), st.session_state.logs.copy()))
             if len(st.session_state.previous_states) > 5:
                 st.session_state.previous_states.pop(0)
             
-            # Restore redo state
             redo_df, redo_logs = st.session_state.redo_states.pop()
             st.session_state.cleaned_df = redo_df
             st.session_state.logs = redo_logs
-            st.session_state.suggestions = get_cleaning_suggestions(redo_df)
+            st.session_state.suggestions = get_cached_suggestions(redo_df)
             st.session_state.cleaning_history.append({
                 "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "logs": ["Redid last cleaning operation"]
@@ -383,6 +439,16 @@ def render_clean_page():
         else:
             st.write("No cleaning operations have been performed yet.")
 
+    # Export to Tableau
+    with st.expander("Export to Tableau", expanded=False):
+        st.subheader("Export to Tableau")
+        if st.session_state.get('cleaned_df') is not None:
+            export_button = st.button("Export Cleaned Dataset for Tableau")
+            if export_button:
+                filename = f"cleaned_for_tableau_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                st.markdown(get_download_link(st.session_state.cleaned_df, filename), unsafe_allow_html=True)
+                st.info("Download the CSV and import it into Tableau Public or Desktop to create visualizations!")
+
     # Display Cleaned Dataset
     if st.session_state.get('cleaned_df') is not None:
         st.subheader("Cleaned Dataset Preview")
@@ -398,3 +464,18 @@ def render_clean_page():
         st.markdown(get_download_link(st.session_state.cleaned_df, 
                                     f"cleaned_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
                    unsafe_allow_html=True)
+
+def render_insights_page():
+    """Render the insights page with NLG."""
+    st.title("💡 Insights Dashboard")
+    if 'df' not in st.session_state or st.session_state.df is None:
+        st.warning("Please upload a dataset first on the Upload page.")
+        return
+
+    df = st.session_state.cleaned_df if st.session_state.cleaned_df is not None else st.session_state.df
+
+    with st.spinner("Generating insights..."):
+        insights = get_insights(df)
+        st.subheader("Key Insights")
+        for insight in insights:
+            st.write(f"- {insight}")
