@@ -3,7 +3,13 @@ import pandas as pd
 from datetime import datetime
 import base64
 import json
-from data_utils import get_cleaning_suggestions, apply_cleaning_operations, extract_column, calculate_health_score, chat_with_gpt, detect_anomalies, get_insights, suggest_workflow
+from data_utils import (
+    get_cleaning_suggestions, apply_cleaning_operations, extract_column, 
+    calculate_health_score, chat_with_gpt, detect_anomalies, get_insights, 
+    suggest_workflow, train_ml_model, forecast_time_series, perform_clustering, 
+    generate_synthetic_data, analyze_time_series
+)
+from predictive import render_predictive_dashboard
 
 # Cache expensive operations
 @st.cache_data
@@ -479,3 +485,95 @@ def render_insights_page():
         st.subheader("Key Insights")
         for insight in insights:
             st.write(f"- {insight}")
+
+def render_predictive_page():
+    """Render the predictive analytics page with ML model training, forecasting, and clustering."""
+    st.title("🔮 Predictive Analytics")
+    if 'df' not in st.session_state or st.session_state.df is None:
+        st.warning("Please upload a dataset first on the Upload page.")
+        return
+
+    df = st.session_state.cleaned_df if st.session_state.cleaned_df is not None else st.session_state.df
+
+    # Predictive Dashboard (from predictive.py)
+    st.subheader("Predictive Dashboard")
+    render_predictive_dashboard(df)
+
+    # Synthetic Data Generation
+    st.subheader("Generate Synthetic Data")
+    task_type = st.selectbox("Task Type", ["classification", "regression"])
+    if st.button("Generate Synthetic Data"):
+        with st.spinner("Generating synthetic data..."):
+            synthetic_df = generate_synthetic_data(df, task_type)
+            st.session_state.cleaned_df = synthetic_df
+            st.session_state.suggestions = get_cached_suggestions(synthetic_df)
+            st.session_state.cleaning_history.append({
+                "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "logs": ["Generated synthetic data"]
+            })
+            st.write("Synthetic Dataset Preview:")
+            st.dataframe(synthetic_df.head(10))
+            st.markdown(get_download_link(synthetic_df, 
+                                        f"synthetic_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
+                       unsafe_allow_html=True)
+
+    # Time Series Forecasting
+    st.subheader("Time Series Forecasting")
+    time_cols = [col for col in df.columns if pd.api.types.is_datetime64_any_dtype(df[col])]
+    if time_cols:
+        forecast_col = st.selectbox("Select time series column", time_cols)
+        periods = st.slider("Forecast periods", 1, 30, 5)
+        if st.button("Forecast"):
+            with st.spinner("Forecasting..."):
+                forecast_df = forecast_time_series(df, forecast_col, periods)
+                st.write("Forecasted Values:")
+                st.dataframe(forecast_df)
+                st.markdown(get_download_link(forecast_df, 
+                                            f"forecast_{forecast_col}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
+                           unsafe_allow_html=True)
+    else:
+        st.info("No datetime columns found for time series forecasting.")
+
+    # Time Series Decomposition
+    st.subheader("Time Series Decomposition")
+    if time_cols:
+        decompose_col = st.selectbox("Select column for decomposition", time_cols, key="decompose_col")
+        period = st.slider("Period for decomposition", 1, 30, 12)
+        if st.button("Decompose Time Series"):
+            with st.spinner("Decomposing time series..."):
+                decomposition = analyze_time_series(df, decompose_col, period)
+                if decomposition:
+                    st.write("Trend Component:")
+                    st.line_chart(decomposition.get("trend"))
+                    st.write("Seasonal Component:")
+                    st.line_chart(decomposition.get("seasonal"))
+                    st.write("Residual Component:")
+                    st.line_chart(decomposition.get("residual"))
+                else:
+                    st.error("Failed to decompose time series. Ensure the column has sufficient data.")
+    else:
+        st.info("No datetime columns found for time series decomposition.")
+
+    # Clustering
+    st.subheader("Clustering")
+    numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+    cluster_cols = st.multiselect("Select columns for clustering", numeric_cols)
+    n_clusters = st.slider("Number of clusters", 2, 10, 3)
+    if st.button("Perform Clustering"):
+        if len(cluster_cols) < 2:
+            st.warning("Please select at least two columns for clustering.")
+        else:
+            with st.spinner("Performing clustering..."):
+                labels = perform_clustering(df, cluster_cols, n_clusters)
+                df['Cluster'] = labels
+                st.session_state.cleaned_df = df
+                st.session_state.suggestions = get_cached_suggestions(df)
+                st.session_state.cleaning_history.append({
+                    "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    "logs": ["Performed clustering"]
+                })
+                st.write("Dataset with Cluster Labels:")
+                st.dataframe(df.head(10))
+                st.markdown(get_download_link(df, 
+                                            f"clustered_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
+                           unsafe_allow_html=True)
