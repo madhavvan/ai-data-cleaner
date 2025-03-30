@@ -20,14 +20,20 @@ def render_predictive_page(df):
         with st.spinner("Training model..."):
             try:
                 model, score, explainer, shap_values, X_test = train_ml_model(df, target_col, feature_cols, task_type.lower())
-                if model is not None and score is not None and explainer is not None and shap_values is not None and X_test is not None:
+                if model is not None and score is not None:
                     st.write(f"Model Accuracy: {score:.2f}")
                     
-                    # Feature importance using SHAP
-                    st.subheader("Feature Importance")
-                    import matplotlib
-                    shap.summary_plot(shap_values, X_test, plot_type="bar", show=False)
-                    st.pyplot()
+                    # Feature importance using SHAP, if available
+                    if explainer is not None and shap_values is not None and X_test is not None:
+                        st.subheader("Feature Importance")
+                        try:
+                            import shap
+                            shap.summary_plot(shap_values, X_test, plot_type="bar", show=False)
+                            st.pyplot()
+                        except ImportError:
+                            st.warning("SHAP library not installed. Feature importance plots are unavailable.")
+                    else:
+                        st.warning("Feature importance plots are unavailable due to missing SHAP library.")
                 else:
                     st.error("Model training failed. Check logs or ensure valid input data.")
             except Exception as e:

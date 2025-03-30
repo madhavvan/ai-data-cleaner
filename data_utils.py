@@ -7,7 +7,6 @@ from sklearn.preprocessing import LabelEncoder, PolynomialFeatures
 from sklearn.ensemble import IsolationForest, RandomForestRegressor, RandomForestClassifier
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.cluster import KMeans
-import shap
 import requests
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.seasonal import seasonal_decompose
@@ -21,7 +20,20 @@ logger = logging.getLogger(__name__)
 
 # Load OpenAI API key from Streamlit secrets
 api_key = st.secrets.get("OPENAI_API_KEY", None)
-client = OpenAI(api_key=api_key) if api_key else None
+
+# Initialize OpenAI client with explicit configuration
+if api_key:
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            http_client=None  # Use default HTTP client without custom proxy settings
+        )
+    except Exception as e:
+        logger.error(f"Failed to initialize OpenAI client: {str(e)}")
+        client = None
+else:
+    logger.warning("OpenAI API key not found in Streamlit secrets. AI-driven features will be disabled.")
+    client = None
 
 def detect_outliers(df, col):
     """Detect outliers in a numeric column using IQR method."""
@@ -274,8 +286,17 @@ def train_ml_model(df, target_col, feature_cols, task_type="classification"):
         
         best_model = grid_search.best_estimator_
         score = best_model.score(X_test, y_test)
-        explainer = shap.TreeExplainer(best_model)
-        shap_values = explainer.shap_values(X_test)
+        
+        # Attempt to import and use SHAP, with fallback if not available
+        try:
+            import shap
+            explainer = shap.TreeExplainer(best_model)
+            shap_values = explainer.shap_values(X_test)
+        except ImportError:
+            logger.warning("SHAP library not installed. Feature importance plots will not be available.")
+            explainer = None
+            shap_values = None
+        
         joblib.dump(best_model, "model.pkl")
         return best_model, score, explainer, shap_values, X_test
     except Exception as e:
