@@ -13,7 +13,7 @@ page = st.sidebar.radio("Go to", ["Upload", "Clean", "Visualize"])
 # Add feedback form link (replace with your actual Google Form link)
 st.sidebar.markdown("---")  # Separator
 st.sidebar.markdown("**Feedback**")
-st.sidebar.markdown("Help us improve! [Share your feedback](https://forms.gle/your-form-id)")  # Replace with your actual Google Form link
+st.sidebar.markdown("Help us improve! [Share your feedback](https://docs.google.com/forms/d/e/1FAIpQLScpUFM0Y5_i5LJDM-HZEZEtOHbLHy4Vp-ek_-819MRZo7Q9rQ/viewform?usp=dialog)")  # Replace with your actual Google Form link
 
 # Theme toggle (kept as a placeholder)
 if st.sidebar.button("Toggle Dark Mode"):
