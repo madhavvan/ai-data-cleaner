@@ -9,7 +9,7 @@ from data_utils import (
     suggest_workflow, train_ml_model, forecast_time_series, perform_clustering, 
     generate_synthetic_data, analyze_time_series
 )
-from predictive import render_predictive_dashboard
+from predictive import render_predictive_page as render_predictive_page_external  # Renamed import to avoid conflict
 
 # Cache expensive operations
 @st.cache_data
@@ -497,7 +497,7 @@ def render_predictive_page():
 
     # Predictive Dashboard (from predictive.py)
     st.subheader("Predictive Dashboard")
-    render_predictive_dashboard(df)
+    render_predictive_page_external(df)  # Updated to use the renamed import
 
     # Synthetic Data Generation
     st.subheader("Generate Synthetic Data")
