@@ -13,26 +13,33 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 import joblib
 from sklearn.datasets import make_classification, make_regression
 import logging
+import httpx
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load OpenAI API key from Streamlit secrets
-api_key = st.secrets.get("OPENAI_API_KEY", None)
+# Load OpenAI API key from Streamlit secrets with fallback
+try:
+    api_key = st.secrets.get("OPENAI_API_KEY", None)
+except FileNotFoundError:
+    logger.warning("No secrets.toml file found. AI-driven features will be disabled locally unless an API key is provided.")
+    api_key = None
 
-# Initialize OpenAI client with explicit configuration
+# Initialize OpenAI client with custom httpx client to avoid proxies issue
 if api_key:
     try:
+        # Create a custom httpx client without proxies
+        http_client = httpx.Client(proxies=None)
         client = OpenAI(
             api_key=api_key,
-            http_client=None  # Use default HTTP client without custom proxy settings
+            http_client=http_client
         )
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {str(e)}")
         client = None
 else:
-    logger.warning("OpenAI API key not found in Streamlit secrets. AI-driven features will be disabled.")
+    logger.warning("OpenAI API key not found. AI-driven features will be disabled.")
     client = None
 
 def detect_outliers(df, col):
