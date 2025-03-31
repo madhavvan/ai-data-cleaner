@@ -119,7 +119,7 @@ def render_clean_page():
 
     # Get AI cleaning suggestions if not already fetched
     if not st.session_state.suggestions:
-        with st.spinner(" World's best AI analyzing dataset..."):
+        with st.spinner(" World's best AI analyzing your dataset..."):
             st.session_state.suggestions = get_cached_suggestions(df)
     
     st.subheader("Dataset Health")
