@@ -13,7 +13,6 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 import joblib
 from sklearn.datasets import make_classification, make_regression
 import logging
-import httpx
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -26,15 +25,10 @@ except FileNotFoundError:
     logger.warning("No secrets.toml file found. AI-driven features will be disabled locally unless an API key is provided.")
     api_key = None
 
-# Initialize OpenAI client with custom httpx client to avoid proxies issue
+# Initialize OpenAI client with minimal configuration
 if api_key:
     try:
-        # Create a custom httpx client without proxies
-        http_client = httpx.Client(proxies=None)
-        client = OpenAI(
-            api_key=api_key,
-            http_client=http_client
-        )
+        client = OpenAI(api_key=api_key)  # Simplified initialization for openai==1.35.10
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {str(e)}")
         client = None
