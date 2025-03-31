@@ -19,11 +19,6 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Disable proxies at the environment level as a precaution
-os.environ["HTTP_PROXY"] = ""
-os.environ["HTTPS_PROXY"] = ""
-os.environ["NO_PROXY"] = "*"
-
 # Load OpenAI API key from Streamlit secrets with fallback to environment variable
 try:
     api_key = st.secrets.get("OPENAI_API_KEY", None)
@@ -43,7 +38,7 @@ except Exception as e:
     else:
         logger.warning("OpenAI API key not found in environment variable either.")
 
-# Initialize OpenAI client with minimal configuration
+# Initialize OpenAI client with minimal configuration (same as reference code)
 client = None
 if api_key:
     try:
