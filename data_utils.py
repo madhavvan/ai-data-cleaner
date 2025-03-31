@@ -19,27 +19,35 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Disable proxies at the environment level to prevent httpx from injecting them
+# Disable proxies at the environment level as a precaution
 os.environ["HTTP_PROXY"] = ""
 os.environ["HTTPS_PROXY"] = ""
 os.environ["NO_PROXY"] = "*"
 
-# Load OpenAI API key from Streamlit secrets with fallback
+# Load OpenAI API key from Streamlit secrets with fallback to environment variable
 try:
     api_key = st.secrets.get("OPENAI_API_KEY", None)
     logger.info("Successfully loaded OPENAI_API_KEY from secrets")
 except FileNotFoundError:
-    logger.warning("No secrets.toml file found. AI-driven features will be disabled locally unless an API key is provided.")
-    api_key = None
+    logger.warning("No secrets.toml file found. Checking environment variable OPENAI_API_KEY.")
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key:
+        logger.info("Successfully loaded OPENAI_API_KEY from environment variable")
+    else:
+        logger.warning("OpenAI API key not found in environment variable either.")
 except Exception as e:
     logger.error(f"Error loading secrets: {str(e)}")
-    api_key = None
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key:
+        logger.info("Successfully loaded OPENAI_API_KEY from environment variable")
+    else:
+        logger.warning("OpenAI API key not found in environment variable either.")
 
 # Initialize OpenAI client with minimal configuration
 client = None
 if api_key:
     try:
-        client = OpenAI(api_key=api_key)  # Minimal initialization for openai==1.35.10
+        client = OpenAI(api_key=api_key)  # Simplified initialization
         logger.info("OpenAI client initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {str(e)}")
