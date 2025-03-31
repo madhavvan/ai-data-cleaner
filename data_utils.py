@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import openai  # Added for version access
 from openai import OpenAI
 import streamlit as st
 import re
@@ -46,19 +47,20 @@ env_proxies = {
 }
 logger.info(f"Environment proxy settings: {env_proxies}")
 
-# Initialize OpenAI client with explicit parameters to avoid proxies issue
+# Initialize OpenAI client
 client = None
 if api_key:
     try:
-        # For openai==1.10.0, use minimal configuration without proxies
+        # For openai>=1.52.2, simplified initialization
         client = OpenAI(api_key=api_key)
-        logger.info("OpenAI client initialized successfully")
+        logger.info("OpenAI client initialized successfully with version: %s", openai.__version__)
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {str(e)}")
         client = None
 else:
     logger.warning("OpenAI API key not found. AI-driven features will be disabled.")
 
+# Rest of the file remains unchanged
 def detect_outliers(df, col):
     """Detect outliers in a numeric column using IQR method."""
     try:
