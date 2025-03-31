@@ -38,11 +38,20 @@ except Exception as e:
     else:
         logger.warning("OpenAI API key not found in environment variable either.")
 
-# Initialize OpenAI client with minimal configuration (same as reference code)
+# Log environment variables for debugging
+env_proxies = {
+    "HTTP_PROXY": os.getenv("HTTP_PROXY"),
+    "HTTPS_PROXY": os.getenv("HTTPS_PROXY"),
+    "NO_PROXY": os.getenv("NO_PROXY")
+}
+logger.info(f"Environment proxy settings: {env_proxies}")
+
+# Initialize OpenAI client with explicit parameters to avoid proxies issue
 client = None
 if api_key:
     try:
-        client = OpenAI(api_key=api_key)  # Simplified initialization
+        # For openai==1.10.0, use minimal configuration without proxies
+        client = OpenAI(api_key=api_key)
         logger.info("OpenAI client initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {str(e)}")
