@@ -13,28 +13,39 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 import joblib
 from sklearn.datasets import make_classification, make_regression
 import logging
+import os
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Disable proxies at the environment level to prevent httpx from injecting them
+os.environ["HTTP_PROXY"] = ""
+os.environ["HTTPS_PROXY"] = ""
+os.environ["NO_PROXY"] = "*"
+
 # Load OpenAI API key from Streamlit secrets with fallback
 try:
     api_key = st.secrets.get("OPENAI_API_KEY", None)
+    logger.info("Successfully loaded OPENAI_API_KEY from secrets")
 except FileNotFoundError:
     logger.warning("No secrets.toml file found. AI-driven features will be disabled locally unless an API key is provided.")
     api_key = None
+except Exception as e:
+    logger.error(f"Error loading secrets: {str(e)}")
+    api_key = None
 
 # Initialize OpenAI client with minimal configuration
+client = None
 if api_key:
     try:
-        client = OpenAI(api_key=api_key)  # Simplified initialization for openai==1.35.10
+        client = OpenAI(api_key=api_key)  # Minimal initialization for openai==1.35.10
+        logger.info("OpenAI client initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {str(e)}")
         client = None
 else:
     logger.warning("OpenAI API key not found. AI-driven features will be disabled.")
-    client = None
 
 def detect_outliers(df, col):
     """Detect outliers in a numeric column using IQR method."""
@@ -103,7 +114,7 @@ def calculate_health_score(df):
 def get_cleaning_suggestions(df):
     """Generate AI-driven cleaning suggestions with explanations using GPT-4o."""
     if not client:
-        return [("Error: OpenAI API key not configured", "API key missing")]
+        return [("Error: OpenAI API key not configured", "API key missing or client initialization failed")]
     try:
         analysis = analyze_dataset(df)
         prompt = f"""
@@ -136,7 +147,7 @@ def get_cleaning_suggestions(df):
 def get_insights(df):
     """Generate natural language insights about the dataset."""
     if not client:
-        return "Error: OpenAI API key not configured"
+        return "Error: OpenAI API key not configured or client initialization failed"
     try:
         prompt = f"""
         You are an AI data analyst. Analyze this dataset and provide 3-5 human-readable insights in plain English:
@@ -347,7 +358,7 @@ st.write(f"Predicted {target_col}: {{prediction}}")
 def chat_with_gpt(df, message):
     """Chat with GPT about the dataset, with identity response for relevant questions."""
     if not client:
-        return "Error: OpenAI API key not configured"
+        return "Error: OpenAI API key not configured or client initialization failed"
     
     # Check for identity-related questions
     identity_keywords = ["who are you", "what are you", "who created you", "what's your name"]
