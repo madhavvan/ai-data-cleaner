@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-import openai  # Added for version access
+import openai
 from openai import OpenAI
 import streamlit as st
 import re
@@ -15,52 +15,55 @@ import joblib
 from sklearn.datasets import make_classification, make_regression
 import logging
 import os
+import httpx
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load OpenAI API key from Streamlit secrets with fallback to environment variable
+# Load OpenAI API key
+api_key = None
 try:
-    api_key = st.secrets.get("OPENAI_API_KEY", None)
-    logger.info("Successfully loaded OPENAI_API_KEY from secrets")
+    api_key = st.secrets["OPENAI_API_KEY"]
+    logger.info("Successfully loaded OPENAI_API_KEY from st.secrets")
+except KeyError:
+    logger.warning("OPENAI_API_KEY not found in st.secrets. Falling back to environment variable.")
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key:
+        logger.info("Successfully loaded OPENAI_API_KEY from environment variable")
+    else:
+        logger.error("OPENAI_API_KEY not found in environment variable either.")
 except FileNotFoundError:
-    logger.warning("No secrets.toml file found. Checking environment variable OPENAI_API_KEY.")
+    logger.error("secrets.toml file not found at .streamlit/secrets.toml. Falling back to environment variable.")
     api_key = os.getenv("OPENAI_API_KEY")
     if api_key:
         logger.info("Successfully loaded OPENAI_API_KEY from environment variable")
     else:
-        logger.warning("OpenAI API key not found in environment variable either.")
+        logger.error("OPENAI_API_KEY not found in environment variable either.")
 except Exception as e:
-    logger.error(f"Error loading secrets: {str(e)}")
+    logger.error(f"Unexpected error loading OPENAI_API_KEY from st.secrets: {str(e)}")
     api_key = os.getenv("OPENAI_API_KEY")
     if api_key:
         logger.info("Successfully loaded OPENAI_API_KEY from environment variable")
     else:
-        logger.warning("OpenAI API key not found in environment variable either.")
-
-# Log environment variables for debugging
-env_proxies = {
-    "HTTP_PROXY": os.getenv("HTTP_PROXY"),
-    "HTTPS_PROXY": os.getenv("HTTPS_PROXY"),
-    "NO_PROXY": os.getenv("NO_PROXY")
-}
-logger.info(f"Environment proxy settings: {env_proxies}")
+        logger.error("OPENAI_API_KEY not found in environment variable either.")
 
 # Initialize OpenAI client
 client = None
 if api_key:
     try:
-        # For openai>=1.52.2, simplified initialization
-        client = OpenAI(api_key=api_key)
+        http_client = httpx.Client(proxies=None)
+        client = OpenAI(api_key=api_key, http_client=http_client)
         logger.info("OpenAI client initialized successfully with version: %s", openai.__version__)
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {str(e)}")
         client = None
 else:
-    logger.warning("OpenAI API key not found. AI-driven features will be disabled.")
+    logger.warning("OpenAI API key not provided. AI-driven features will be disabled.")
 
-# Rest of the file remains unchanged
+# Enhancement: Global flag for AI availability
+AI_AVAILABLE = client is not None
+
 def detect_outliers(df, col):
     """Detect outliers in a numeric column using IQR method."""
     try:
@@ -92,6 +95,7 @@ def detect_anomalies(df, cols):
         logger.error(f"Error in detect_anomalies: {str(e)}")
     return anomalies
 
+@st.cache_data  # Enhancement: Cache expensive operation
 def analyze_dataset(df):
     """Analyze dataset properties for GPT suggestions and health score."""
     try:
@@ -128,7 +132,7 @@ def calculate_health_score(df):
 def get_cleaning_suggestions(df):
     """Generate AI-driven cleaning suggestions with explanations using GPT-4o."""
     if not client:
-        return [("Error: OpenAI API key not configured", "API key missing or client initialization failed")]
+        return [("Manual cleaning required", "Please configure a valid OpenAI API key in .streamlit/secrets.toml or as an environment variable to enable AI suggestions.")]
     try:
         analysis = analyze_dataset(df)
         prompt = f"""
@@ -161,7 +165,7 @@ def get_cleaning_suggestions(df):
 def get_insights(df):
     """Generate natural language insights about the dataset."""
     if not client:
-        return "Error: OpenAI API key not configured or client initialization failed"
+        return ["Please configure a valid OpenAI API key in .streamlit/secrets.toml or as an environment variable to enable AI-driven insights."]
     try:
         prompt = f"""
         You are an AI data analyst. Analyze this dataset and provide 3-5 human-readable insights in plain English:
@@ -251,9 +255,13 @@ def analyze_time_series(df, col, period=12):
         logger.error(f"Error in analyze_time_series: {str(e)}")
         return {}
 
-def forecast_time_series(df, col, periods=5):
+def forecast_time_series(df, col, periods=5, time_col=None):
     """Forecast future values for a time series column."""
     try:
+        if time_col and time_col in df.columns:
+            df = df.set_index(time_col)  # Fix: Dynamically set datetime index
+        elif not pd.api.types.is_datetime64_any_dtype(df.index):
+            raise ValueError("DataFrame index must be datetime or a time_col must be provided.")
         model = ARIMA(df[col].dropna(), order=(1, 1, 1))
         fitted = model.fit()
         forecast = fitted.forecast(steps=periods)
@@ -313,15 +321,16 @@ def train_ml_model(df, target_col, feature_cols, task_type="classification"):
         best_model = grid_search.best_estimator_
         score = best_model.score(X_test, y_test)
         
-        # Attempt to import and use SHAP, with fallback if not available
+        explainer = None
+        shap_values = None
         try:
             import shap
             explainer = shap.TreeExplainer(best_model)
             shap_values = explainer.shap_values(X_test)
         except ImportError:
             logger.warning("SHAP library not installed. Feature importance plots will not be available.")
-            explainer = None
-            shap_values = None
+        except Exception as e:
+            logger.warning(f"SHAP computation failed: {str(e)}. Proceeding without feature importance.")
         
         joblib.dump(best_model, "model.pkl")
         return best_model, score, explainer, shap_values, X_test
@@ -372,9 +381,8 @@ st.write(f"Predicted {target_col}: {{prediction}}")
 def chat_with_gpt(df, message):
     """Chat with GPT about the dataset, with identity response for relevant questions."""
     if not client:
-        return "Error: OpenAI API key not configured or client initialization failed"
+        return "Please configure a valid OpenAI API key in .streamlit/secrets.toml or as an environment variable to enable AI chat features."
     
-    # Check for identity-related questions
     identity_keywords = ["who are you", "what are you", "who created you", "what's your name"]
     if any(keyword in message.lower() for keyword in identity_keywords):
         return "I’m Madhavvan’s personal training assistant, built for data analysis. How can I assist you today?"
@@ -400,30 +408,27 @@ def chat_with_gpt(df, message):
 
 def suggest_workflow(df):
     """Suggest an automated workflow for the dataset."""
+    if not client:
+        return ["Please configure a valid OpenAI API key in .streamlit/secrets.toml or as an environment variable for automated workflow suggestions."]
     try:
         analysis = analyze_dataset(df)
         suggestions = get_cleaning_suggestions(df)
         workflow = []
         
-        # Add cleaning steps
         for suggestion, explanation in suggestions:
             workflow.append(f"Step: {suggestion} - Reason: {explanation}")
         
-        # Add feature engineering if categorical columns exist
         if analysis["cat_cols"]:
             workflow.append("Step: Encode categorical columns - Reason: Prepares data for ML modeling.")
         if len(analysis["numeric_cols"]) >= 2:
             workflow.append("Step: Generate polynomial features - Reason: Enhances model performance.")
         
-        # Add predictive modeling if numerical columns exist
         if analysis["numeric_cols"]:
             workflow.append("Step: Train a predictive model - Reason: Enables forecasting and insights.")
         
-        # Add clustering if multiple features
         if len(analysis["numeric_cols"]) >= 2:
             workflow.append("Step: Perform clustering - Reason: Identifies natural groupings in the data.")
         
-        # Add visualization suggestion
         viz_type, viz_reason = suggest_visualization(df)
         workflow.append(f"Step: Create a {viz_type} chart - Reason: {viz_reason}")
         
@@ -453,12 +458,19 @@ def apply_cleaning_operations(df, selected_suggestions, columns_to_drop, options
                 )
                 replace_count = 0
                 for col in target_cols:
-                    if replace_with == "NaN":
-                        replace_count += cleaned_df[col].eq(replace_value).sum()
-                        cleaned_df[col] = cleaned_df[col].replace(replace_value, np.nan)
-                    else:
-                        replace_count += cleaned_df[col].eq(replace_value).sum()
-                        cleaned_df[col] = cleaned_df[col].replace(replace_value, replace_with)
+                    try:
+                        col_values = cleaned_df[col].astype(str)
+                        replace_value_str = str(replace_value)
+                        matches = col_values == replace_value_str
+                        replace_count += matches.sum()
+                        if replace_with == "NaN":
+                            cleaned_df.loc[matches, col] = np.nan
+                        else:
+                            cleaned_df.loc[matches, col] = replace_with
+                        logger.info(f"Column {col}: Found {matches.sum()} instances of '{replace_value}' to replace with '{replace_with}'")
+                    except Exception as e:
+                        logger.error(f"Error replacing value in column {col}: {str(e)}")
+                        logs.append(f"Failed to replace '{replace_value}' in column {col}: {str(e)}")
                 logs.append(f"Replaced '{replace_value}' with '{replace_with}' in {replace_scope} ({replace_count} instances)" if replace_count > 0 else
                             f"No instances of '{replace_value}' found in {replace_scope}")
         
@@ -571,7 +583,6 @@ def apply_cleaning_operations(df, selected_suggestions, columns_to_drop, options
                     logs.append(f"Interpolated time series in {col} - {explanation}")
         
         if train_ml and target_col and feature_cols:
-            # Apply feature engineering before training
             cleaned_df = auto_feature_engineering(cleaned_df, feature_cols)
             feature_cols = [col for col in cleaned_df.columns if col != target_col]
             model, score, explainer, shap_values, X_test = train_ml_model(cleaned_df, target_col, feature_cols, task_type="classification")

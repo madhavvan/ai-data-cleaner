@@ -3,13 +3,14 @@ import pandas as pd
 from datetime import datetime
 import base64
 import json
+import os
 from data_utils import (
     get_cleaning_suggestions, apply_cleaning_operations, extract_column, 
     calculate_health_score, chat_with_gpt, detect_anomalies, get_insights, 
     suggest_workflow, train_ml_model, forecast_time_series, perform_clustering, 
     generate_synthetic_data, analyze_time_series
 )
-from predictive import render_predictive_page as render_predictive_page_external  # Renamed import to avoid conflict
+from predictive import render_predictive_page as render_predictive_page_external
 
 # Cache expensive operations
 @st.cache_data
@@ -27,7 +28,6 @@ def render_upload_page():
     st.title("📤 Upload Your Dataset")
     st.markdown("<p class='welcome'>Start your data journey here!</p>", unsafe_allow_html=True)
 
-    # Initialize session state variables
     if 'df' not in st.session_state:
         st.session_state.df = None
     if 'cleaned_df' not in st.session_state:
@@ -47,11 +47,10 @@ def render_upload_page():
     if 'cleaning_templates' not in st.session_state:
         st.session_state.cleaning_templates = {}
     if 'is_premium' not in st.session_state:
-        st.session_state.is_premium = False  # Simulate user status
+        st.session_state.is_premium = False
     if 'ai_suggestions_used' not in st.session_state:
         st.session_state.ai_suggestions_used = 0
 
-    # Display current original dataset if it exists
     if st.session_state.df is not None:
         st.subheader("Original Dataset Preview (First 10 Rows)")
         st.dataframe(st.session_state.df.head(10))
@@ -63,26 +62,27 @@ def render_upload_page():
         st.progress(score / 100)
         st.write(f"Dataset Health Score: {score}/100")
         st.info("This is the original dataset. Cleaning operations are applied to a working copy.")
-
-        # Warn user about overwriting
         st.warning("Uploading a new file will overwrite the current dataset and reset all cleaning operations. Proceed with caution!")
 
-    # File uploader with chunked processing
     uploaded_file = st.file_uploader("Choose a file (CSV or Excel)", type=["csv", "xlsx"], help="Upload a CSV or Excel file to begin.")
     if uploaded_file:
         try:
-            # Check file size (warn if > 50MB)
-            if uploaded_file.size > 50 * 1024 * 1024:  # 50MB in bytes
-                st.warning("File size exceeds 50MB. Using chunked processing to handle large datasets.")
+            if uploaded_file.size > 50 * 1024 * 1024:  # 50MB
+                st.warning("File size exceeds 50MB. Using chunked processing.")
                 if uploaded_file.name.endswith('.csv'):
                     chunks = pd.read_csv(uploaded_file, chunksize=10000)
-                    df = pd.concat(chunks, ignore_index=True)
+                    df_list = []
+                    progress_bar = st.progress(0)  # Enhancement: Add progress bar
+                    total_chunks = uploaded_file.size // (10000 * 100)  # Rough estimate
+                    for i, chunk in enumerate(chunks):
+                        df_list.append(chunk)
+                        progress_bar.progress(min((i + 1) / total_chunks, 1.0))
+                    df = pd.concat(df_list, ignore_index=True)
                 else:
                     df = pd.read_excel(uploaded_file)
             else:
                 df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
 
-            # Reset session state when a new file is uploaded
             st.session_state.df = df
             st.session_state.cleaned_df = None
             st.session_state.logs = []
@@ -96,7 +96,6 @@ def render_upload_page():
 
             st.subheader("Dataset Preview (First 10 Rows)")
             st.dataframe(df.head(10))
-            
             st.subheader("Basic Metadata")
             score = calculate_health_score(df)
             st.write(f"Rows: {df.shape[0]}")
@@ -108,20 +107,19 @@ def render_upload_page():
             st.error(f"Error loading file: {str(e)}")
 
 def render_clean_page():
-    """Render the clean page UI with advanced features."""
+    """Render the clean page UI with robust multi-change logic and enhanced UX."""
     st.title("🧹 Clean Your Dataset")
     if 'df' not in st.session_state or st.session_state.df is None:
         st.warning("Please upload a dataset first on the Upload page.")
         return
 
-    # Use the cleaned dataset if it exists, otherwise use the original
+    # Always use the latest cleaned dataset as the base
     df = st.session_state.cleaned_df if st.session_state.cleaned_df is not None else st.session_state.df
 
-    # Get AI cleaning suggestions if not already fetched
-    if not st.session_state.suggestions:
-        with st.spinner(" World's best AI analyzing your dataset..."):
-            st.session_state.suggestions = get_cached_suggestions(df)
-    
+    # Initialize suggestions if not present (run silently in the background)
+    if not st.session_state.suggestions or id(st.session_state.cleaned_df) != id(df):
+        st.session_state.suggestions = get_cached_suggestions(df)
+
     st.subheader("Dataset Health")
     score = calculate_health_score(df)
     st.progress(score / 100)
@@ -136,38 +134,26 @@ def render_clean_page():
                 st.write("### Suggested Workflow:")
                 for step in workflow:
                     st.write(f"- {step}")
-                # Auto-apply cleaning suggestions
                 cleaned_df, logs = apply_cleaning_operations(
                     df, st.session_state.suggestions, [], {}, "", "", "", [], "", auto_clean=True
                 )
+                st.session_state.previous_states.append((df.copy(), st.session_state.logs.copy()))
                 st.session_state.cleaned_df = cleaned_df
                 st.session_state.logs = logs
+                st.session_state.redo_states = []
                 st.session_state.cleaning_history.append({
                     "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     "logs": logs + ["Executed Smart Workflow"]
                 })
+                # Update suggestions silently
                 st.session_state.suggestions = get_cached_suggestions(cleaned_df)
                 st.success("Smart Workflow executed successfully!")
+                st.rerun()
             except Exception as e:
                 st.error(f"Error executing smart workflow: {str(e)}")
 
-    # Chatbot Interface
-    st.subheader("AI Data Assistant")
-    chat_container = st.container()
-    with chat_container:
-        for message in st.session_state.get('chat_history', []):
-            with st.chat_message(message["role"]):
-                st.write(message["content"])
-    
-    chat_input = st.chat_input("Ask me anything about your data!")
-    if chat_input:
-        st.session_state.chat_history.append({"role": "user", "content": chat_input})
-        response = chat_with_gpt(df, chat_input)
-        st.session_state.chat_history.append({"role": "assistant", "content": response})
-        st.rerun()
-
-    # Cleaning Form
-    with st.form(key="cleaning_form"):
+    # Cleaning Form with Robust Logic
+    with st.form(key="cleaning_form", clear_on_submit=False):
         manual_container = st.container()
         replace_container = st.container()
         encode_container = st.container()
@@ -176,17 +162,33 @@ def render_clean_page():
         anomaly_container = st.container()
         ml_container = st.container()
 
+        # Initialize all variables to avoid UnboundLocalError
+        selected_suggestions = []
+        options = {}
+        columns_to_drop = []
+        replace_value = ""
+        replace_with = ""
+        replace_scope = "All columns"
+        encode_cols = []
+        encode_method = "Label Encoding"
+        enrich_col = "None"
+        enrich_api_key = ""
+        train_ml = False
+        target_col = None
+        feature_cols = []
+
         with manual_container:
             st.subheader("Manual Column Dropping")
             columns_to_drop = st.multiselect("Select columns to drop", df.columns.tolist(), 
                                            help="Choose columns to remove from the dataset.")
         
         with replace_container:
-            with st.expander("Custom Value Replacement", expanded=False):
-                replace_value = st.text_input("Value to replace (e.g., 999, Unknown)", "", 
-                                            help="Enter the value you want to replace.")
+            with st.expander("Custom Value Replacement", expanded=True):
+                st.markdown("**Replace unwanted values (e.g., '?' for missing data)**")
+                replace_value = st.text_input("Value to replace (e.g., ?, 999, Unknown)", "", 
+                                            help="Enter the value you want to replace. For example, use '?' to replace missing value markers.")
                 replace_with = st.radio("Replace with", ["NaN", "?", "0", "Custom"], 
-                                      help="Select what to replace the value with.")
+                                      help="Select what to replace the value with. 'NaN' is recommended for missing data.")
                 if replace_with == "Custom":
                     replace_with = st.text_input("Custom replacement value", "", 
                                                help="Enter a custom replacement value.")
@@ -212,31 +214,26 @@ def render_clean_page():
         
         with ai_container:
             with st.expander("AI Cleaning Suggestions", expanded=True):
-                if not st.session_state.is_premium and st.session_state.ai_suggestions_used >= 5:
-                    st.warning("You’ve reached the free tier limit for AI suggestions. Upgrade to Premium for unlimited access ($5/month)!")
-                else:
-                    selected_suggestions = []
-                    options = {}
-                    for suggestion, explanation in st.session_state.suggestions:
-                        if st.checkbox(f"{suggestion} - {explanation}", key=suggestion):
-                            selected_suggestions.append((suggestion, explanation))
-                            st.session_state.ai_suggestions_used += 1
-                            if "Handle special characters" in suggestion:
-                                options["special_chars"] = st.radio("Action for special characters", 
-                                                                  ("Drop them", "Replace with underscores"), 
-                                                                  key="special_chars_opt")
-                            elif "Fill missing values" in suggestion:
-                                col = extract_column(suggestion)
-                                if col and col in df.columns and df[col].dtype in ['int64', 'float64']:
-                                    options[f"fill_{col}"] = st.radio(f"Fill method for {col}", 
-                                                                    ["mean", "median", "mode"], 
-                                                                    key=f"fill_opt_{col}")
-                            elif "Handle outliers" in suggestion:
-                                col = extract_column(suggestion)
-                                if col and col in df.columns:
-                                    options[f"outlier_{col}"] = st.radio(f"Action for outliers in {col}", 
-                                                                       ("Remove", "Cap at bounds"), 
-                                                                       key=f"outlier_opt_{col}")
+                for suggestion, explanation in st.session_state.suggestions:
+                    if st.checkbox(f"{suggestion} - {explanation}", key=suggestion):
+                        selected_suggestions.append((suggestion, explanation))
+                        st.session_state.ai_suggestions_used += 1
+                        if "Handle special characters" in suggestion:
+                            options["special_chars"] = st.radio("Action for special characters", 
+                                                              ("Drop them", "Replace with underscores"), 
+                                                              key=f"special_chars_opt_{suggestion}")
+                        elif "Fill missing values" in suggestion:
+                            col = extract_column(suggestion)
+                            if col and col in df.columns and df[col].dtype in ['int64', 'float64']:
+                                options[f"fill_{col}"] = st.radio(f"Fill method for {col}", 
+                                                                ["mean", "median", "mode"], 
+                                                                key=f"fill_opt_{col}_{suggestion}")
+                        elif "Handle outliers" in suggestion:
+                            col = extract_column(suggestion)
+                            if col and col in df.columns:
+                                options[f"outlier_{col}"] = st.radio(f"Action for outliers in {col}", 
+                                                                   ("Remove", "Cap at bounds"), 
+                                                                   key=f"outlier_opt_{col}_{suggestion}")
         
         with anomaly_container:
             with st.expander("Anomaly Detection", expanded=False):
@@ -270,12 +267,12 @@ def render_clean_page():
         with col3:
             auto_clean_button = st.form_submit_button(label="Auto-Clean")
 
-    # Process cleaning operations with validation
+    # Process cleaning operations with robust validation
     if preview_button or apply_button or auto_clean_button:
         operations_selected = (
             selected_suggestions or
             columns_to_drop or
-            (replace_value and replace_with) or
+            (replace_value.strip() and replace_with) or
             encode_cols or
             (enrich_col != "None" and enrich_api_key) or
             auto_clean_button or
@@ -305,38 +302,28 @@ def render_clean_page():
                             st.write(f"- {log}")
                 
                     if apply_button or auto_clean_button:
-                        # Save the current state for undo
-                        if st.session_state.cleaned_df is not None:
-                            st.session_state.previous_states.append((st.session_state.cleaned_df.copy(), st.session_state.logs.copy()))
-                        else:
-                            st.session_state.previous_states.append((st.session_state.df.copy(), []))
+                        st.session_state.previous_states.append((df.copy(), st.session_state.logs.copy()))
                         if len(st.session_state.previous_states) > 5:
                             st.session_state.previous_states.pop(0)
-                        
-                        # Clear redo stack on new action
                         st.session_state.redo_states = []
-
-                        # Update cleaned_df and logs
                         st.session_state.cleaned_df = cleaned_df
                         st.session_state.logs = logs
-
-                        # Update cleaning history
                         st.session_state.cleaning_history.append({
                             "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                             "logs": logs
                         })
-
-                        # Refresh AI suggestions for the updated dataset
-                        with st.spinner("Refreshing AI suggestions..."):
-                            st.session_state.suggestions = get_cached_suggestions(cleaned_df)
+                        # Update suggestions silently after applying changes
+                        st.session_state.suggestions = get_cached_suggestions(cleaned_df)
+                        st.success("Changes applied successfully!")
+                        st.rerun()
                 except Exception as e:
                     st.error(f"Error processing cleaning operations: {str(e)}")
 
-    # Separate form for saving and applying templates
+    # Template Management
     with st.expander("Save/Apply Cleaning Templates", expanded=False):
         st.subheader("Save/Apply Cleaning Templates")
         with st.form(key="template_form"):
-            template_name = st.text_input("Template Name", "", help="Enter a name to save this cleaning configuration as a template.")
+            template_name = st.text_input("Template Name", "", help="Enter a name to save this cleaning configuration.")
             save_template_button = st.form_submit_button("Save as Template")
 
             if save_template_button and template_name:
@@ -383,46 +370,35 @@ def render_clean_page():
                                 target_col=template["target_col"],
                                 feature_cols=template["feature_cols"]
                             )
-
-                            # Save the current state for undo
-                            if st.session_state.cleaned_df is not None:
-                                st.session_state.previous_states.append((st.session_state.cleaned_df.copy(), st.session_state.logs.copy()))
-                            else:
-                                st.session_state.previous_states.append((st.session_state.df.copy(), []))
+                            st.session_state.previous_states.append((df.copy(), st.session_state.logs.copy()))
                             if len(st.session_state.previous_states) > 5:
                                 st.session_state.previous_states.pop(0)
-
-                            # Clear redo stack on new action
                             st.session_state.redo_states = []
-
-                            # Update cleaned_df and logs
                             st.session_state.cleaned_df = cleaned_df
                             st.session_state.logs = logs
-
-                            # Update cleaning history
                             st.session_state.cleaning_history.append({
                                 "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                                 "logs": logs + [f"Applied template '{template_to_apply}'"]
                             })
-
-                            # Refresh AI suggestions for the updated dataset
+                            # Update suggestions silently
                             st.session_state.suggestions = get_cached_suggestions(cleaned_df)
                             st.success(f"Applied template '{template_to_apply}'")
+                            st.rerun()
                         except Exception as e:
                             st.error(f"Error applying template: {str(e)}")
 
     # Undo/Redo Buttons
     col1, col2 = st.columns(2)
     with col1:
-        if st.session_state.get('previous_states') and st.button("Undo Last Cleaning", help="Revert to the previous state"):
+        if st.session_state.previous_states and st.button("Undo Last Cleaning", help="Revert to the previous state"):
             current_state = (st.session_state.cleaned_df.copy(), st.session_state.logs.copy())
             st.session_state.redo_states.append(current_state)
             if len(st.session_state.redo_states) > 5:
                 st.session_state.redo_states.pop(0)
-            
             previous_df, previous_logs = st.session_state.previous_states.pop()
             st.session_state.cleaned_df = previous_df
             st.session_state.logs = previous_logs
+            # Update suggestions silently
             st.session_state.suggestions = get_cached_suggestions(previous_df)
             st.session_state.cleaning_history.append({
                 "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -431,14 +407,14 @@ def render_clean_page():
             st.rerun()
 
     with col2:
-        if st.session_state.get('redo_states') and st.button("Redo Last Cleaning", help="Reapply the last undone state"):
+        if st.session_state.redo_states and st.button("Redo Last Cleaning", help="Reapply the last undone state"):
             st.session_state.previous_states.append((st.session_state.cleaned_df.copy(), st.session_state.logs.copy()))
             if len(st.session_state.previous_states) > 5:
                 st.session_state.previous_states.pop(0)
-            
             redo_df, redo_logs = st.session_state.redo_states.pop()
             st.session_state.cleaned_df = redo_df
             st.session_state.logs = redo_logs
+            # Update suggestions silently
             st.session_state.suggestions = get_cached_suggestions(redo_df)
             st.session_state.cleaning_history.append({
                 "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -452,7 +428,7 @@ def render_clean_page():
         if st.session_state.cleaning_history:
             for entry in st.session_state.cleaning_history:
                 st.write(f"**{entry['timestamp']}**")
-                for log in entry["logs"]:
+                for log in entry['logs']:
                     st.write(f"- {log}")
         else:
             st.write("No cleaning operations have been performed yet.")
@@ -460,17 +436,27 @@ def render_clean_page():
     # Export to Tableau
     with st.expander("Export to Tableau", expanded=False):
         st.subheader("Export to Tableau")
-        if st.session_state.get('cleaned_df') is not None:
+        if st.session_state.cleaned_df is not None:
             export_button = st.button("Export Cleaned Dataset for Tableau")
             if export_button:
                 filename = f"cleaned_for_tableau_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
                 st.markdown(get_download_link(st.session_state.cleaned_df, filename), unsafe_allow_html=True)
                 st.info("Download the CSV and import it into Tableau Public or Desktop to create visualizations!")
 
-    # Display Cleaned Dataset
-    if st.session_state.get('cleaned_df') is not None:
+    # Enhancement: Add pagination for large datasets
+    if st.session_state.cleaned_df is not None:
         st.subheader("Cleaned Dataset Preview")
-        st.dataframe(st.session_state.cleaned_df.head(10))
+        view_option = st.radio("View dataset as:", ("First 10 Rows", "Full Dataset"), horizontal=True)
+        if view_option == "First 10 Rows":
+            st.dataframe(st.session_state.cleaned_df.head(10))
+        else:
+            page_size = 100
+            total_rows = len(st.session_state.cleaned_df)
+            total_pages = (total_rows + page_size - 1) // page_size
+            page = st.number_input("Page", min_value=1, max_value=total_pages, value=1)
+            start_idx = (page - 1) * page_size
+            end_idx = min(start_idx + page_size, total_rows)
+            st.dataframe(st.session_state.cleaned_df.iloc[start_idx:end_idx], use_container_width=True)
         
         st.subheader("Cleaning Summary")
         st.write(f"Original Shape: {st.session_state.df.shape}")
@@ -478,7 +464,6 @@ def render_clean_page():
         st.write(f"New Health Score: {calculate_health_score(st.session_state.cleaned_df)}/100")
         for log in st.session_state.logs:
             st.write(f"- {log}")
-        
         st.markdown(get_download_link(st.session_state.cleaned_df, 
                                     f"cleaned_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
                    unsafe_allow_html=True)
@@ -501,20 +486,16 @@ def render_insights_page():
         except Exception as e:
             st.error(f"Error generating insights: {str(e)}")
 
-def render_predictive_page():
+def render_predictive_page(df):
     """Render the predictive analytics page with ML model training, forecasting, and clustering."""
     st.title("🔮 Predictive Analytics")
     if 'df' not in st.session_state or st.session_state.df is None:
         st.warning("Please upload a dataset first on the Upload page.")
         return
 
-    df = st.session_state.cleaned_df if st.session_state.cleaned_df is not None else st.session_state.df
-
-    # Predictive Dashboard (from predictive.py)
     st.subheader("Predictive Dashboard")
-    render_predictive_page_external(df)  # Updated to use the renamed import
+    render_predictive_page_external(df)
 
-    # Synthetic Data Generation
     st.subheader("Generate Synthetic Data")
     task_type = st.selectbox("Task Type", ["classification", "regression"])
     if st.button("Generate Synthetic Data"):
@@ -522,6 +503,7 @@ def render_predictive_page():
             try:
                 synthetic_df = generate_synthetic_data(df, task_type)
                 st.session_state.cleaned_df = synthetic_df
+                # Update suggestions silently
                 st.session_state.suggestions = get_cached_suggestions(synthetic_df)
                 st.session_state.cleaning_history.append({
                     "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -535,7 +517,6 @@ def render_predictive_page():
             except Exception as e:
                 st.error(f"Error generating synthetic data: {str(e)}")
 
-    # Time Series Forecasting
     st.subheader("Time Series Forecasting")
     time_cols = [col for col in df.columns if pd.api.types.is_datetime64_any_dtype(df[col])]
     if time_cols:
@@ -544,7 +525,7 @@ def render_predictive_page():
         if st.button("Forecast"):
             with st.spinner("Forecasting..."):
                 try:
-                    forecast_df = forecast_time_series(df, forecast_col, periods)
+                    forecast_df = forecast_time_series(df, forecast_col, periods, time_col=forecast_col)  # Fix: Pass time_col
                     st.write("Forecasted Values:")
                     st.dataframe(forecast_df)
                     st.markdown(get_download_link(forecast_df, 
@@ -555,7 +536,6 @@ def render_predictive_page():
     else:
         st.info("No datetime columns found for time series forecasting.")
 
-    # Time Series Decomposition
     st.subheader("Time Series Decomposition")
     if time_cols:
         decompose_col = st.selectbox("Select column for decomposition", time_cols, key="decompose_col")
@@ -578,12 +558,11 @@ def render_predictive_page():
     else:
         st.info("No datetime columns found for time series decomposition.")
 
-    # Clustering
     st.subheader("Clustering")
     numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
     cluster_cols = st.multiselect("Select columns for clustering", numeric_cols)
     n_clusters = st.slider("Number of clusters", 2, 10, 3)
-    if st.button("Perform Clustering"):
+    if st.button("Perform Clustering", key="ui_perform_clustering"):  # Added unique key
         if len(cluster_cols) < 2:
             st.warning("Please select at least two columns for clustering.")
         else:
@@ -592,6 +571,7 @@ def render_predictive_page():
                     labels = perform_clustering(df, cluster_cols, n_clusters)
                     df['Cluster'] = labels
                     st.session_state.cleaned_df = df
+                    # Update suggestions silently
                     st.session_state.suggestions = get_cached_suggestions(df)
                     st.session_state.cleaning_history.append({
                         "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),

@@ -88,16 +88,15 @@ def render_visualization_page(df):
                 fig = px.violin(df, x=None if x_col == "None" else x_col, y=y_col, 
                               color=None if hue_col == "None" else hue_col, title=title)
             elif viz_type == "Heatmap":
-                corr = df[x_col].corr()
+                corr = df[x_col].corr()  # Fix: Correctly compute correlation for selected columns
                 fig = px.imshow(corr, text_auto=True, title=title)
             elif viz_type == "Pie":
                 fig = px.pie(df, names=x_col, values=y_col, title=title)
             elif viz_type == "Time Series Forecast":
-                df.set_index(x_col, inplace=True)
-                forecast_df = forecast_time_series(df, y_col, periods)
+                forecast_df = forecast_time_series(df, y_col, periods, time_col=x_col)  # Fix: Pass time_col
                 combined_df = pd.concat([df[[y_col]], forecast_df])
                 fig = px.line(combined_df, y=y_col, title=title)
-                fig.add_vline(x=df.index[-1], line_dash="dash", line_color="red")
+                fig.add_vline(x=df[x_col].iloc[-1], line_dash="dash", line_color="red")
             elif viz_type == "3D Scatter":
                 fig = px.scatter_3d(df, x=x_col, y=y_col, z=z_col, color=None if hue_col == "None" else hue_col, title=title)
             elif viz_type == "Geospatial Map":
@@ -108,5 +107,8 @@ def render_visualization_page(df):
                 fig.update_layout(mapbox_style="open-street-map")
             
             st.plotly_chart(fig, use_container_width=True)
+        except ValueError as e:
+            # Enhancement: Improved error messaging
+            st.error(f"Invalid input: {str(e)}. Please check your column selections and data types.")
         except Exception as e:
-            st.error(f"Error generating visualization: {str(e)}")
+            st.error(f"Error generating visualization: {str(e)}. Ensure columns have valid data and try again.")

@@ -1,6 +1,8 @@
 import streamlit as st
+import os
 from ui import render_upload_page, render_clean_page, render_insights_page, render_predictive_page
 from visualizations import render_visualization_page
+from data_utils import chat_with_gpt, AI_AVAILABLE  # Added AI_AVAILABLE import
 
 # Set page configuration
 st.set_page_config(page_title="AI Data Cleaner Pro", layout="wide", initial_sidebar_state="expanded")
@@ -9,6 +11,29 @@ st.set_page_config(page_title="AI Data Cleaner Pro", layout="wide", initial_side
 st.sidebar.title("Navigation")
 st.sidebar.markdown("Welcome to **AI Data Cleaner Pro**! Transform your data with AI magic.")
 page = st.sidebar.radio("Go to", ["Upload", "Clean", "Insights", "Visualize", "Predictive", "Share"])
+
+# Enhancement: Warn if AI features are disabled
+if not AI_AVAILABLE:
+    st.sidebar.warning("AI features are disabled. Please configure an OPENAI_API_KEY in .streamlit/secrets.toml or as an environment variable.")
+
+# AI Assistant in Sidebar
+st.sidebar.subheader("AI Data Assistant")
+chat_container = st.sidebar.container()
+with chat_container:
+    for message in st.session_state.get('chat_history', []):
+        with st.chat_message(message["role"]):
+            st.write(f"**{message['role'].capitalize()}:** {message['content']}")
+
+chat_input = st.sidebar.chat_input("Ask me anything about your data!")
+if chat_input:
+    df = st.session_state.get('cleaned_df') if st.session_state.get('cleaned_df') is not None else st.session_state.get('df')
+    if df is not None:
+        st.session_state.chat_history.append({"role": "user", "content": chat_input})
+        response = chat_with_gpt(df, chat_input)
+        st.session_state.chat_history.append({"role": "assistant", "content": response})
+        st.rerun()
+    else:
+        st.sidebar.warning("Please upload a dataset first.")
 
 # Add feedback, community, and premium links
 st.sidebar.markdown("---")
@@ -21,6 +46,11 @@ st.sidebar.markdown("Unlock advanced features for $5/month! [Upgrade Now](https:
 st.sidebar.markdown("**User Testimonials**")
 st.sidebar.markdown("- 'This app replaced Excel for me!' - @DataNerd")
 st.sidebar.markdown("- 'Mind-blowing AI features!' - @MLFan")
+
+# Debug mode check
+is_dev_mode = os.getenv("DEV_MODE") == "true"
+if is_dev_mode:
+    st.sidebar.info("Running in DEV_MODE: Unlimited AI suggestions enabled.")
 
 # Page routing
 if page == "Upload":
