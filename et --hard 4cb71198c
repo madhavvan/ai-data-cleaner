@@ -1,0 +1,52 @@
+[33ma22226eb9[m[33m ([m[1;36mHEAD[m[33m)[m added pyxl
+[33mb4f7cc969[m changes made
+[33m4cb71198c[m fix: Resolve StreamlitDuplicateElementId error by adding unique keys to Perform Clustering buttons
+[33m5e642dc08[m added world's best AI
+[33m76f7311f7[m added world's best AI
+[33mf7f53e68a[m updated 2.0
+[33m73481e0c5[m updated
+[33m066f22352[m proxy cleared
+[33m079d7f972[m add
+[33md4d7ee2ae[m adc
+[33mf16f0340f[m added text file
+[33m6720c8305[m Simplify OpenAI client initialization to avoid proxies error
+[33m3157069cf[m Fix working directory issue and ensure API key loading in VS Code
+[33m6d6d7e2cb[m changed
+[33mcc585ec79[m changes added
+[33m490e3eeca[m achange
+[33mbb69017e3[m achange
+[33m9b2869070[m added changes
+[33m8d9d05380[m changes made
+[33m707db9dea[m added updates
+[33m60c4879b1[m Added plotly and pinned Streamlit version to fix errors
+[33m5e617a94a[m changes made
+[33m30b60705d[m added new feature
+[33me03595f3a[m Enhanced app with advanced features: anomaly detection, feature engineering, time series analysis
+[33m902dd9214[m enhanced
+[33mb052318d5[m Fix missing submit button error by using st.form_submit_button for template saving/applying
+[33mb3c7c54a6[m added forms link
+[33m00ae1cad5[m Fix re-editing, improve dropdown UX, add session persistence, and implement bonus features
+[33m319fba037[m changes
+[33mad61c47f5[m Update README.md
+[33m66e0ee4d8[m licensed
+[33m06d97e401[m added notification
+[33m720338308[m Update data_utils.py to use st.secrets
+[33m88c69fcd5[m Initial commit of AI Data Cleaner
+[33mb8c8c716f[m changes made
+[33mbcb1e03c6[m added the automation of data cleaning
+[33m77cb36980[m code improved for outliers detection and replacing the null values
+[33m278e361bf[m Clearly implemented robust and precise data cleaning
+[33m961a28bdb[m Clearly fixed nested button issue with session state
+[33mff8a91992[m Professional clearly enhanced UI and real data cleaning
+[33m76a9fc03f[m Clearly added AI insights and visualizations
+[33m0e8250c6f[m Clearly automated actual data cleaning with Pandas
+[33m0faf2ac42[m clearly added interactive AI suggestions acceptance
+[33me755fb5e3[m clearly added interactive AI suggestions acceptance
+[33me07dfc089[m clearly fixed missing except block
+[33md8321de79[m clearly migrated to new OpenAI API v1.0+
+[33me38c46601[m Added AI cleaning suggestions clearly
+[33mf312b8c64[m Fixed requirements file clearly
+[33meaafb307a[m Clearly added requirements for deployment
+[33m2800a8bf7[m Added Dev Container Folder
+[33mc86adccac[m Added .env to .gitignore to protect API keys clearly
+[33m2d5065142[m initial clearly defined setup
