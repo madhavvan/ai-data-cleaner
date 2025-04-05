@@ -1,66 +1,308 @@
 import streamlit as st
-import plotly.express as px
 import pandas as pd
+import numpy as np
+from typing import Optional, Tuple, Dict, List
+import plotly.express as px
+import plotly.graph_objects as go
 from data_utils import train_ml_model, perform_clustering
-from datetime import datetime  # Added for download link
-import base64  # Added for download link
+from sklearn.metrics import confusion_matrix, classification_report
+import xgboost as xgb
+import lightgbm as lgb
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, r2_score
+import lime
+import lime.lime_tabular
 
-def get_download_link(df, filename):
-    """Generate a download link for the dataset."""
-    csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()
-    return f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download clustered dataset</a>'
+# Optional SHAP import with fallback
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except ImportError:
+    SHAP_AVAILABLE = False
+    st.warning("SHAP library not installed. Feature importance visualizations will be unavailable.")
 
-def render_predictive_page(df):
-    """Render the predictive analytics page."""
-    if df is None:
-        st.warning("Please upload a dataset first on the Upload page.")
+def render_predictive_page(df: pd.DataFrame) -> None:
+    """
+    Render the predictive analytics page with ML model training, SHAP/LIME visualizations, fairness metrics, and clustering.
+
+    Args:
+        df (pd.DataFrame): Input DataFrame.
+    """
+    if df is None or df.empty:
+        st.error("No dataset available. Please upload a dataset on the Upload page.")
         return
-    
-    st.title("🔮 Predictive Analytics Dashboard")
-    
-    st.subheader("Predictive Modeling")
-    target_col = st.selectbox("Target Column", df.columns.tolist())
-    feature_cols = st.multiselect("Feature Columns", df.columns.tolist())
-    task_type = st.radio("Task Type", ["Classification", "Regression"])
-    
-    if st.button("Train Model"):
-        with st.spinner("Training model..."):
+
+    # Update progress
+    st.session_state.progress["Predictive"] = "In Progress"
+
+    # Model Training Section
+    st.subheader("Train a Machine Learning Model")
+    with st.expander("Model Training", expanded=True):
+        task_type = st.radio("Task Type", ["classification", "regression"], help="Choose the type of ML task.")
+        target_col = st.selectbox("Target Column", df.columns, help="Select the column to predict.")
+        feature_cols = st.multiselect("Feature Columns", [col for col in df.columns if col != target_col], 
+                                     help="Select columns to use as predictors.")
+        
+        model_type = st.selectbox("Model Type", ["RandomForest", "XGBoost", "LightGBM"], 
+                                  help="Choose the ML model to train.")
+        
+        if st.button("Train Model"):
+            if not target_col or not feature_cols:
+                st.warning("Please select a target column and at least one feature column.")
+            else:
+                with st.spinner("Training model... This may take a few minutes."):
+                    progress_bar = st.progress(0)
+                    try:
+                        # Simulate progress updates for better UX
+                        for i in range(1, 101):
+                            progress_bar.progress(i)
+                            if i == 25:
+                                st.text("Preprocessing data...")
+                            elif i == 50:
+                                st.text("Tuning hyperparameters...")
+                            elif i == 75:
+                                st.text("Finalizing model...")
+                        # Manual model training
+                        model, score, explainer, shap_values, X_test = train_ml_model(df, target_col, feature_cols, task_type, model_type=model_type)
+
+                        if model is None:
+                            st.error("Model training failed. Please check the dataset and try again.")
+                        else:
+                            st.session_state['model'] = model
+                            st.session_state['explainer'] = explainer
+                            st.session_state['shap_values'] = shap_values
+                            st.session_state['X_test'] = X_test
+                            st.session_state['feature_cols'] = feature_cols
+                            st.session_state['task_type'] = task_type
+                            st.success(f"Model trained successfully! {task_type.capitalize()} score: {score:.2f}")
+                            
+                            # Fairness Metrics
+                            if task_type == "classification":
+                                st.subheader("Fairness Metrics")
+                                y_pred = model.predict(X_test)
+                                # Compute confusion matrix and classification report
+                                cm = confusion_matrix(y_test, y_pred)
+                                fig_cm = px.imshow(cm, text_auto=True, title="Confusion Matrix")
+                                st.plotly_chart(fig_cm, use_container_width=True)
+                                st.write("Classification Report:")
+                                st.text(classification_report(y_test, y_pred))
+                                # Demographic parity (simplified, assuming binary classification and a sensitive attribute)
+                                if "gender" in df.columns:  # Example sensitive attribute
+                                    sensitive_attr = df.loc[X_test.index, "gender"]
+                                    pred_df = pd.DataFrame({'prediction': y_pred, 'gender': sensitive_attr})
+                                    parity = pred_df.groupby('gender')['prediction'].mean()
+                                    st.write("Demographic Parity (Prediction Rates by Gender):")
+                                    st.write(parity)
+                                    if abs(parity.diff().iloc[-1]) > 0.1:
+                                        st.warning("Potential fairness issue: Prediction rates differ significantly across groups.")
+                    except Exception as e:
+                        st.error(f"Error during model training: {str(e)}. Please ensure the selected columns are valid.")
+                    finally:
+                        progress_bar.empty()
+
+    # SHAP Visualization Section
+    if 'model' in st.session_state and SHAP_AVAILABLE and st.session_state.get('explainer') is not None:
+        st.subheader("Feature Importance (SHAP)")
+        with st.expander("SHAP Visualizations", expanded=True):
             try:
-                model, score, explainer, shap_values, X_test = train_ml_model(df, target_col, feature_cols, task_type.lower())
-                if model is not None and score is not None:
-                    st.write(f"Model Accuracy: {score:.2f}")
-                    
-                    # Feature importance using SHAP, if available
-                    if explainer is not None and shap_values is not None and X_test is not None:
-                        st.subheader("Feature Importance")
-                        try:
-                            import shap
-                            shap.summary_plot(shap_values, X_test, plot_type="bar", show=False)
-                            st.pyplot()
-                        except ImportError:
-                            st.warning("SHAP library not installed. Feature importance plots are unavailable.")
-                    else:
-                        st.warning("Feature importance plots are unavailable due to missing SHAP library.")
+                shap_values = st.session_state['shap_values']
+                X_test = st.session_state['X_test']
+                feature_cols = st.session_state['feature_cols']
+
+                # Summary Plot (Interactive with Plotly)
+                st.write("### Feature Importance Summary")
+                shap_df = pd.DataFrame(shap_values, columns=feature_cols)
+                mean_shap = np.abs(shap_df).mean().sort_values(ascending=False)
+                fig = px.bar(
+                    x=mean_shap.values,
+                    y=mean_shap.index,
+                    orientation='h',
+                    labels={'x': 'Mean |SHAP Value| (Impact on Model Output)', 'y': 'Feature'},
+                    title="Feature Importance (Mean |SHAP Value|)",
+                    color=mean_shap.values,
+                    color_continuous_scale='Viridis'
+                )
+                fig.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='white',
+                    title_font_color='white',
+                    showlegend=False
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Interactive Force Plot for a single prediction
+                st.write("### Individual Prediction Explanation")
+                sample_idx = st.slider("Select a sample to explain", 0, len(X_test) - 1, 0)
+                shap.initjs()
+                force_plot = shap.force_plot(
+                    st.session_state['explainer'].expected_value,
+                    shap_values[sample_idx],
+                    X_test.iloc[sample_idx],
+                    show=False,
+                    matplotlib=False
+                )
+                st_shap(force_plot, height=200)
+
+            except Exception as e:
+                st.error(f"Error generating SHAP visualizations: {str(e)}. Please ensure SHAP is properly configured.")
+
+    # LIME Visualization Section
+    if 'model' in st.session_state:
+        st.subheader("Local Model Interpretability (LIME)")
+        with st.expander("LIME Explanations", expanded=True):
+            try:
+                X_test = st.session_state['X_test']
+                feature_cols = st.session_state['feature_cols']
+                model = st.session_state['model']
+                task_type = st.session_state['task_type']
+
+                # Initialize LIME explainer
+                lime_explainer = lime.lime_tabular.LimeTabularExplainer(
+                    X_test.values,
+                    feature_names=feature_cols,
+                    class_names=[str(i) for i in range(len(np.unique(df[target_col]))) if task_type == "classification"],
+                    mode="classification" if task_type == "classification" else "regression"
+                )
+
+                # Select a sample to explain
+                sample_idx = st.slider("Select a sample to explain (LIME)", 0, len(X_test) - 1, 0)
+                instance = X_test.iloc[sample_idx].values
+
+                # Generate LIME explanation
+                if task_type == "classification":
+                    exp = lime_explainer.explain_instance(
+                        instance,
+                        model.predict_proba,
+                        num_features=len(feature_cols)
+                    )
                 else:
-                    st.error("Model training failed. Check logs or ensure valid input data.")
+                    exp = lime_explainer.explain_instance(
+                        instance,
+                        lambda x: model.predict(x).reshape(-1),
+                        num_features=len(feature_cols)
+                    )
+
+                # Display LIME explanation
+                st.write("### LIME Explanation")
+                fig, ax = plt.subplots()
+                exp.as_pyplot_figure()
+                st.pyplot(fig)
+
             except Exception as e:
-                st.error(f"Error during model training: {str(e)}")
-    
-    st.subheader("Clustering")
-    cluster_cols = st.multiselect("Columns for Clustering", df.columns.tolist())
-    n_clusters = st.slider("Number of Clusters", 2, 10, 3)
-    if st.button("Perform Clustering", key="predictive_perform_clustering"):  # Added unique key
-        with st.spinner("Clustering data..."):
+                st.error(f"Error generating LIME explanations: {str(e)}. Please ensure the model and data are compatible.")
+
+    # Clustering Section
+    st.subheader("Clustering Results")
+    with st.expander("Clustering", expanded=True):
+        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+        cluster_cols = st.multiselect("Select columns for clustering", numeric_cols, 
+                                     help="Select at least two numerical columns for clustering.")
+        n_clusters = st.slider("Number of clusters", 2, 10, 3, help="Choose the number of clusters to form.")
+        
+        if st.button("Run Clustering"):
+            if len(cluster_cols) < 2:
+                st.warning("Please select at least two columns for clustering.")
+            else:
+                with st.spinner("Performing clustering..."):
+                    try:
+                        labels = perform_clustering(df, cluster_cols, n_clusters)
+                        df['Cluster'] = labels
+                        st.session_state['cleaned_df'] = df
+                        st.session_state['clustering_labels'] = labels
+                        st.session_state['cluster_cols'] = cluster_cols
+                        st.success("Clustering completed successfully!")
+                    except Exception as e:
+                        st.error(f"Error performing clustering: {str(e)}. Please ensure the selected columns contain valid numerical data.")
+
+        # Interactive Clustering Visualization
+        if 'clustering_labels' in st.session_state and st.session_state['clustering_labels'] is not None:
             try:
-                clustered_df = df.copy()  # Enhancement: Avoid mutating original df
-                labels = perform_clustering(df, cluster_cols, n_clusters)
-                clustered_df["Cluster"] = labels
-                st.write("Clustered Data:")
-                st.dataframe(clustered_df.head(10))
-                fig = px.scatter(clustered_df, x=cluster_cols[0], y=cluster_cols[1], color="Cluster", title="Clustering Results")
-                st.plotly_chart(fig)
-                # Enhancement: Add download link for clustered data
-                st.markdown(get_download_link(clustered_df, f"clustered_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), unsafe_allow_html=True)
+                cluster_cols = st.session_state['cluster_cols']
+                labels = st.session_state['clustering_labels']
+                
+                if len(cluster_cols) >= 2:
+                    # 2D Scatter Plot
+                    fig_2d = px.scatter(
+                        df,
+                        x=cluster_cols[0],
+                        y=cluster_cols[1],
+                        color=labels.astype(str),
+                        labels={'color': 'Cluster'},
+                        title="Clustering Results (2D Scatter Plot)",
+                        hover_data=cluster_cols
+                    )
+                    fig_2d.update_layout(
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        font_color='white',
+                        title_font_color='white'
+                    )
+                    st.plotly_chart(fig_2d, use_container_width=True)
+
+                if len(cluster_cols) >= 3:
+                    # 3D Scatter Plot
+                    fig_3d = px.scatter_3d(
+                        df,
+                        x=cluster_cols[0],
+                        y=cluster_cols[1],
+                        z=cluster_cols[2],
+                        color=labels.astype(str),
+                        labels={'color': 'Cluster'},
+                        title="Clustering Results (3D Scatter Plot)",
+                        hover_data=cluster_cols
+                    )
+                    fig_3d.update_layout(
+                        scene=dict(
+                            xaxis_title=cluster_cols[0],
+                            yaxis_title=cluster_cols[1],
+                            zaxis_title=cluster_cols[2],
+                            xaxis=dict(backgroundcolor="rgba(0,0,0,0)", gridcolor="white"),
+                            yaxis=dict(backgroundcolor="rgba(0,0,0,0)", gridcolor="white"),
+                            zaxis=dict(backgroundcolor="rgba(0,0,0,0)", gridcolor="white")
+                        ),
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        font_color='white',
+                        title_font_color='white'
+                    )
+                    st.plotly_chart(fig_3d, use_container_width=True)
+
+                # Cluster Distribution
+                cluster_counts = pd.Series(labels).value_counts().sort_index()
+                fig_dist = px.bar(
+                    x=cluster_counts.index.astype(str),
+                    y=cluster_counts.values,
+                    labels={'x': 'Cluster', 'y': 'Number of Points'},
+                    title="Cluster Distribution",
+                    color=cluster_counts.index.astype(str),
+                    color_discrete_sequence=px.colors.qualitative.Plotly
+                )
+                fig_dist.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='white',
+                    title_font_color='white',
+                    showlegend=False
+                )
+                st.plotly_chart(fig_dist, use_container_width=True)
+
             except Exception as e:
-                st.error(f"Error during clustering: {str(e)}")
+                st.error(f"Error generating clustering visualizations: {str(e)}. Please try different columns or check the data.")
+
+    st.session_state.progress["Predictive"] = "Done"
+
+# Helper function to render SHAP plots in Streamlit
+def st_shap(plot, height: Optional[int] = None) -> None:
+    """
+    Render SHAP plots in Streamlit.
+
+    Args:
+        plot: SHAP plot object.
+        height (Optional[int]): Height of the plot in pixels.
+    """
+    try:
+        shap_html = f"<head>{shap.getjs()}</head><body>{plot.html()}</body>"
+        st.components.v1.html(shap_html, height=height)
+    except Exception as e:
+        st.error(f"Error rendering SHAP plot: {str(e)}.")

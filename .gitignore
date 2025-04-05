@@ -1,6 +1,28 @@
+# Virtual environment
 venv/
+
+# Python cache files
 __pycache__/
 *.pyc
+
+# Environment variables file
 .env
+
+# Streamlit configuration folder
+.streamlit/
+
+# Dynamically generated files
 model.pkl
 predictor_app.py
+
+# SQLite databases (user data, sessions, analytics)
+datatoy_users.db
+datatoy_sessions.db
+datatoy_analytics.db
+
+# Log files
+data_utils.log
+
+# Unnecessary files for deployment
+styles.css
+test_data_utils.py

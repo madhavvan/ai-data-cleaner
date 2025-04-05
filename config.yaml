@@ -1,0 +1,17 @@
+credentials:
+  usernames:
+    user1:
+      email: user1@example.com
+      name: User One
+      password: $2b$12$x23MaNd/nl.94UNE2P6ZruYuUmwp8tNMd3A/ybasbM6n5ha21VZUy  # Generate using `stauth.Hasher(['password']).generate()`
+    user2:
+      email: user2@example.com
+      name: User Two
+      password: $2b$12$askIBnUwikzZ2QzHwM4eDOJVtNwPPSQEvaGQbH1rHvCujXqpKDAui
+cookie:
+  expiry_days: 30
+  key: some_signature_key
+  name: datatoy_cookie
+pre-authorized:
+  emails:
+    - admin@example.com
