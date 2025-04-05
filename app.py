@@ -16,8 +16,8 @@ from authlib.integrations.requests_client import OAuth2Session
 import requests
 
 # Google OAuth Configuration
-GOOGLE_CLIENT_ID = "334414939648-g7t1onfaflnvdd37qeo7h8dvrt8j5emq.apps.googleusercontent.com"
-GOOGLE_CLIENT_SECRET = "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"
+GOOGLE_CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
+GOOGLE_CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
 GOOGLE_REDIRECT_URI = "https://madhavvan-ai-data-cleaner-app-djmiue.streamlit.app"
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -875,9 +875,9 @@ if st.session_state.authenticated:
         st.sidebar.markdown("Connect with others! [Join our Discord](https://discord.gg/your-invite-link)")
         st.sidebar.markdown("**Upgrade to Premium**")
         st.sidebar.markdown("Unlock advanced features for $5/month! [Upgrade Now](https://stripe.com/your-checkout-link)")
-        st.sidebar.markdown("**User Testimonials**")
-        st.sidebar.markdown("- 'This app replaced Excel for me!' - @DataNerd")
-        st.sidebar.markdown("- 'Mind-blowing AI features!' - @MLFan")
+        # st.sidebar.markdown("**User Testimonials**")
+        # st.sidebar.markdown("- 'This app replaced Excel for me!' - @DataNerd")
+        # st.sidebar.markdown("- 'Mind-blowing AI features!' - @MLFan")
 
         is_dev_mode = os.getenv("DEV_MODE") == "true"
         if is_dev_mode:
