@@ -96,8 +96,11 @@ def verify_user(username: str, password: str) -> bool:
     c.execute("SELECT password FROM users WHERE username = %s", (username,))
     result = c.fetchone()
     conn.close()
-    if result and result[0]:
+    if result and result[0]:  # Check if stored_password exists
         stored_password = result[0]
+        # If stored_password is None (e.g., Google OAuth user), return False
+        if stored_password is None:
+            return False
         return bcrypt.checkpw(password.encode('utf-8'), stored_password)
     return False
 
