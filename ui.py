@@ -90,6 +90,38 @@ def render_upload_page() -> None:
     initialize_session_state()
     st.session_state.progress["Upload"] = "In Progress"
 
+    # Check if a navigation action has been triggered
+    if 'navigate_to_clean' in st.session_state and st.session_state.navigate_to_clean:
+        st.session_state.navigate_to_clean = False
+        st.session_state.page = "Clean"
+        from app import save_auth_state
+        save_auth_state()
+        st.experimental_rerun()
+        return
+
+    if 'delete_dataset' in st.session_state and st.session_state.delete_dataset:
+        st.session_state.delete_dataset = False
+        st.session_state.df = None
+        st.session_state.cleaned_df = None
+        st.session_state.logs = []
+        st.session_state.suggestions = []
+        st.session_state.previous_states = []
+        st.session_state.redo_states = []
+        st.session_state.chat_history = []
+        st.session_state.cleaning_history = []
+        st.session_state.cleaning_templates = {}
+        st.session_state.ai_suggestions_used = 0
+        st.session_state.dropped_columns = []
+        st.session_state.progress["Upload"] = "Not Started"
+        st.session_state.progress["Clean"] = "Not Started"
+        st.success("Dataset deleted successfully!")
+        from app import save_auth_state
+        save_auth_state()
+        if 'file_uploader' in st.session_state:
+            del st.session_state['file_uploader']
+        st.experimental_rerun()
+        return
+
     if st.session_state.df is not None:
         st.subheader("Original Dataset Preview (First 10 Rows)")
         st.dataframe(st.session_state.df.head(10))
@@ -106,36 +138,14 @@ def render_upload_page() -> None:
         # Add "Delete Dataset" button
         if st.button("Delete Dataset", help="Remove the uploaded dataset and reset all cleaning operations", key="delete_dataset_button"):
             logger.debug("Delete Dataset button clicked")
-            st.session_state.df = None
-            st.session_state.cleaned_df = None
-            st.session_state.logs = []
-            st.session_state.suggestions = []
-            st.session_state.previous_states = []
-            st.session_state.redo_states = []
-            st.session_state.chat_history = []
-            st.session_state.cleaning_history = []
-            st.session_state.cleaning_templates = {}
-            st.session_state.ai_suggestions_used = 0
-            st.session_state.dropped_columns = []
-            st.session_state.progress["Upload"] = "Not Started"
-            st.session_state.progress["Clean"] = "Not Started"
-            st.success("Dataset deleted successfully!")
-            # Save session state before rerunning
-            from app import save_auth_state
-            save_auth_state()
-            # Clear the file uploader state
-            if 'file_uploader' in st.session_state:
-                del st.session_state['file_uploader']
-            st.rerun()
+            st.session_state.delete_dataset = True
+            st.experimental_rerun()
 
         # Add "Start Cleaning" button
         if st.button("Start Cleaning", help="Proceed to the Cleaning page to clean your dataset", key="start_cleaning_button"):
             logger.debug("Start Cleaning button clicked")
-            st.session_state.page = "Clean"
-            # Save session state before rerunning
-            from app import save_auth_state
-            save_auth_state()
-            st.rerun()
+            st.session_state.navigate_to_clean = True
+            st.experimental_rerun()
 
     uploaded_file = st.file_uploader("Choose a file (CSV, Excel, JSON, or Parquet)", type=["csv", "xlsx", "json", "parquet"], help="Upload a dataset file to begin.", key="file_uploader")
     if uploaded_file:
@@ -282,10 +292,26 @@ def render_clean_page() -> None:
                 st.session_state.suggestions = get_cached_suggestions(cleaned_df[[col for col in cleaned_df.columns if col not in st.session_state.dropped_columns]])
                 st.success("Smart Workflow executed successfully!")
                 st.session_state.progress["Clean"] = "Done"
+                # Display the cleaned dataset immediately
+                st.subheader("Cleaned Dataset Preview (After Smart Workflow)")
+                view_option = st.radio("View dataset as:", ("First 10 Rows", "Full Dataset"), horizontal=True, key="view_option_smart_workflow")
+                if view_option == "First 10 Rows":
+                    st.dataframe(st.session_state.cleaned_df.head(10))
+                else:
+                    st.dataframe(st.session_state.cleaned_df, use_container_width=True, height=600)
+                st.subheader("Cleaning Summary (After Smart Workflow)")
+                st.write(f"Original Shape: {st.session_state.df.shape}")
+                st.write(f"New Shape: {st.session_state.cleaned_df.shape}")
+                st.write(f"New Health Score: {calculate_health_score(st.session_state.cleaned_df)}/100")
+                for log in st.session_state.logs:
+                    st.write(f"- {log}")
+                st.markdown(get_download_link(st.session_state.cleaned_df, 
+                                            f"cleaned_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
+                           unsafe_allow_html=True)
                 # Save session state before rerunning
                 from app import save_auth_state
                 save_auth_state()
-                st.rerun()
+                st.experimental_rerun()
             except Exception as e:
                 st.error(f"Error executing smart workflow: {str(e)}")
                 st.session_state.progress["Clean"] = "Failed"
@@ -378,7 +404,7 @@ def render_clean_page() -> None:
                     help="Choose which columns to apply the replacement to",
                     key="replace_scope"
                 )
-                      
+        
         with encode_container:
             with st.expander("Convert Categorical to Numerical", expanded=False):
                 st.markdown('<span title="Convert categorical columns to numerical values">ℹ️</span>', unsafe_allow_html=True)
@@ -527,6 +553,7 @@ def render_clean_page() -> None:
                             st.error("Invalid replacement scope selected.")
                             return
 
+                    logger.debug("Applying cleaning operations...")
                     cleaned_df, logs = apply_cleaning_operations(
                         df, selected_suggestions, columns_to_drop, options, 
                         replace_value, replace_with if replace_with != "NaN" else "NaN", 
@@ -534,6 +561,7 @@ def render_clean_page() -> None:
                         enrich_col=enrich_col if enrich_col != "None" else None, enrich_api_key=enrich_api_key,
                         train_ml=train_ml, target_col=target_col, feature_cols=feature_cols
                     )
+                    logger.debug(f"Cleaning operations applied. Logs: {logs}")
 
                     for rule in custom_rules:
                         col = rule["column"]
@@ -583,9 +611,29 @@ def render_clean_page() -> None:
                         st.session_state.suggestions = get_cached_suggestions(cleaned_df[[col for col in cleaned_df.columns if col not in st.session_state.dropped_columns]])
                         st.success("Changes applied successfully!")
                         st.session_state.progress["Clean"] = "Done"
-                        st.rerun()
+                        # Display the cleaned dataset immediately
+                        st.subheader("Cleaned Dataset Preview (After Applying Changes)")
+                        view_option = st.radio("View dataset as:", ("First 10 Rows", "Full Dataset"), horizontal=True, key="view_option_apply_changes")
+                        if view_option == "First 10 Rows":
+                            st.dataframe(st.session_state.cleaned_df.head(10))
+                        else:
+                            st.dataframe(st.session_state.cleaned_df, use_container_width=True, height=600)
+                        st.subheader("Cleaning Summary (After Applying Changes)")
+                        st.write(f"Original Shape: {st.session_state.df.shape}")
+                        st.write(f"New Shape: {st.session_state.cleaned_df.shape}")
+                        st.write(f"New Health Score: {calculate_health_score(st.session_state.cleaned_df)}/100")
+                        for log in st.session_state.logs:
+                            st.write(f"- {log}")
+                        st.markdown(get_download_link(st.session_state.cleaned_df, 
+                                                    f"cleaned_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
+                                   unsafe_allow_html=True)
+                        # Save session state before rerunning
+                        from app import save_auth_state
+                        save_auth_state()
+                        st.experimental_rerun()
                 except Exception as e:
                     st.error(f"Error processing cleaning operations: {str(e)}")
+                    logger.error(f"Error in apply_cleaning_operations: {str(e)}")
                     st.session_state.progress["Clean"] = "Failed"
 
     with st.expander("Save/Apply Cleaning Templates", expanded=False):
@@ -655,7 +703,23 @@ def render_clean_page() -> None:
                             st.session_state.suggestions = get_cached_suggestions(cleaned_df[[col for col in cleaned_df.columns if col not in st.session_state.dropped_columns]])
                             st.success(f"Applied template '{template_to_apply}'")
                             st.session_state.progress["Clean"] = "Done"
-                            st.rerun()
+                            # Display the cleaned dataset immediately
+                            st.subheader("Cleaned Dataset Preview (After Applying Template)")
+                            view_option = st.radio("View dataset as:", ("First 10 Rows", "Full Dataset"), horizontal=True, key="view_option_apply_template")
+                            if view_option == "First 10 Rows":
+                                st.dataframe(st.session_state.cleaned_df.head(10))
+                            else:
+                                st.dataframe(st.session_state.cleaned_df, use_container_width=True, height=600)
+                            st.subheader("Cleaning Summary (After Applying Template)")
+                            st.write(f"Original Shape: {st.session_state.df.shape}")
+                            st.write(f"New Shape: {st.session_state.cleaned_df.shape}")
+                            st.write(f"New Health Score: {calculate_health_score(st.session_state.cleaned_df)}/100")
+                            for log in st.session_state.logs:
+                                st.write(f"- {log}")
+                            st.markdown(get_download_link(st.session_state.cleaned_df, 
+                                                        f"cleaned_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
+                                       unsafe_allow_html=True)
+                            st.experimental_rerun()
                         except Exception as e:
                             st.error(f"Error applying template: {str(e)}")
                             st.session_state.progress["Clean"] = "Failed"
@@ -675,7 +739,7 @@ def render_clean_page() -> None:
                 "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "logs": ["Undid last cleaning operation"]
             })
-            st.rerun()
+            st.experimental_rerun()
 
     with col2:
         if st.session_state.redo_states and st.button("Redo Last Cleaning", help="Reapply the last undone state"):
@@ -690,7 +754,7 @@ def render_clean_page() -> None:
                 "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "logs": ["Redid last cleaning operation"]
             })
-            st.rerun()
+            st.experimental_rerun()
 
     with st.expander("Cleaning History", expanded=False):
         st.subheader("Cleaning History")
@@ -711,24 +775,6 @@ def render_clean_page() -> None:
                 filename = f"cleaned_for_tableau_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
                 st.markdown(get_download_link(st.session_state.cleaned_df, filename), unsafe_allow_html=True)
                 st.info("Download the CSV and import it into Tableau Public or Desktop to create visualizations!")
-
-    if st.session_state.cleaned_df is not None:
-        st.subheader("Cleaned Dataset Preview")
-        view_option = st.radio("View dataset as:", ("First 10 Rows", "Full Dataset"), horizontal=True)
-        if view_option == "First 10 Rows":
-            st.dataframe(st.session_state.cleaned_df.head(10))
-        else:
-            st.dataframe(st.session_state.cleaned_df, use_container_width=True, height=600)
-        
-        st.subheader("Cleaning Summary")
-        st.write(f"Original Shape: {st.session_state.df.shape}")
-        st.write(f"New Shape: {st.session_state.cleaned_df.shape}")
-        st.write(f"New Health Score: {calculate_health_score(st.session_state.cleaned_df)}/100")
-        for log in st.session_state.logs:
-            st.write(f"- {log}")
-        st.markdown(get_download_link(st.session_state.cleaned_df, 
-                                    f"cleaned_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
-                   unsafe_allow_html=True)
 
 def render_insights_page() -> None:
     st.title("Insights Dashboard")
