@@ -81,7 +81,7 @@ def add_user(username: str, email: str, name: str, password: str = None, google_
     try:
         c.execute(
             "INSERT INTO users (username, email, name, password, google_id, profile_picture) VALUES (%s, %s, %s, %s, %s, %s)",
-            (username, email, name, hashed_password, google_id, profile_picture)
+            (username, email, name, hashed_password if hashed_password is None else psycopg2.Binary(hashed_password), google_id, profile_picture)
         )
         conn.commit()
     except psycopg2.IntegrityError:
@@ -435,10 +435,17 @@ def get_google_auth_url():
     return auth_url
 
 def handle_google_callback():
-    client = OAuth2Session(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, redirect_uri=GOOGLE_REDIRECT_URI, state=st.session_state.get('oauth_state'))
-    token = client.fetch_token(GOOGLE_TOKEN_URL, authorization_response=st.query_params['code'])
-    user_info = requests.get(GOOGLE_USERINFO_URL, headers={'Authorization': f"Bearer {token['access_token']}"}).json()
-    return user_info
+    try:
+        client = OAuth2Session(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, redirect_uri=GOOGLE_REDIRECT_URI, state=st.session_state.get('oauth_state'))
+        token = client.fetch_token(GOOGLE_TOKEN_URL, authorization_response=str(st.query_params['code']))
+        user_info = requests.get(GOOGLE_USERINFO_URL, headers={'Authorization': f"Bearer {token['access_token']}"}).json()
+        if 'error' in user_info:
+            st.error(f"Google OAuth error: {user_info['error']}")
+            return None
+        return user_info
+    except Exception as e:
+        st.error(f"Error during Google OAuth callback: {str(e)}")
+        return None
 
 # Authentication Logic
 if st.session_state.page == "Login":
@@ -570,24 +577,26 @@ if st.session_state.page == "Login":
 
     if 'code' in st.query_params:
         user_info = handle_google_callback()
-        google_id = user_info['sub']
-        user = get_user_by_google_id(google_id)
-        if user:
-            username, email, name, profile_picture = user
+        if user_info is None:
+            st.error("Failed to authenticate with Google. Please try again.")
         else:
-            # Create new user with Google info
-            username = user_info['email'].split('@')[0]
-            email = user_info['email']
-            name = user_info['name']
-            profile_picture = user_info.get('picture')
-            add_user(username, email, name, google_id=google_id, profile_picture=profile_picture)
-        st.session_state.authenticated = True
-        st.session_state.username = username
-        st.session_state.user_info = user_info  # Store Google user info for profile picture
-        st.session_state.page = "Upload"
-        load_session(username)
-        st.query_params.clear()  # Clear query params
-        st.rerun()
+            google_id = user_info['sub']
+            user = get_user_by_google_id(google_id)
+            if user:
+                username, email, name, profile_picture = user
+            else:
+                username = user_info['email'].split('@')[0]
+                email = user_info['email']
+                name = user_info['name']
+                profile_picture = user_info.get('picture')
+                add_user(username, email, name, google_id=google_id, profile_picture=profile_picture)
+            st.session_state.authenticated = True
+            st.session_state.username = username
+            st.session_state.user_info = user_info
+            st.session_state.page = "Upload"
+            load_session(username)
+            st.query_params.clear()
+            st.rerun()
 
     # Sign Up button with inline styles
     if st.button(
