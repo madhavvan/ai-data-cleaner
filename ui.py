@@ -92,7 +92,8 @@ def render_upload_page() -> None:
         st.warning("Uploading a new file will overwrite the current dataset and reset all cleaning operations. Proceed with caution!")
 
         # Add "Delete Dataset" button
-        if st.button("Delete Dataset", help="Remove the uploaded dataset and reset all cleaning operations"):
+        if st.button("Delete Dataset", help="Remove the uploaded dataset and reset all cleaning operations", key="delete_dataset_button"):
+            st.write("Debug: Delete Dataset button clicked")
             st.session_state.df = None
             st.session_state.cleaned_df = None
             st.session_state.logs = []
@@ -107,11 +108,18 @@ def render_upload_page() -> None:
             st.session_state.progress["Upload"] = "Not Started"
             st.session_state.progress["Clean"] = "Not Started"
             st.success("Dataset deleted successfully!")
+            # Save session state before rerunning
+            from app import save_auth_state
+            save_auth_state()
             st.rerun()
 
         # Add "Start Cleaning" button
-        if st.button("Start Cleaning", help="Proceed to the Cleaning page to clean your dataset"):
+        if st.button("Start Cleaning", help="Proceed to the Cleaning page to clean your dataset", key="start_cleaning_button"):
+            st.write("Debug: Start Cleaning button clicked")
             st.session_state.page = "Clean"
+            # Save session state before rerunning
+            from app import save_auth_state
+            save_auth_state()
             st.rerun()
 
     uploaded_file = st.file_uploader("Choose a file (CSV, Excel, JSON, or Parquet)", type=["csv", "xlsx", "json", "parquet"], help="Upload a dataset file to begin.")
@@ -197,6 +205,9 @@ def render_upload_page() -> None:
                 st.write(f"Dataset Health Score: {score}/100")
                 st.success("Dataset uploaded successfully!")
                 st.session_state.progress["Upload"] = "Done"
+                # Save session state after uploading
+                from app import save_auth_state
+                save_auth_state()
         except Exception as e:
             st.error(f"Error loading file: {str(e)}. Please ensure the file is a valid CSV, Excel, JSON, or Parquet file.")
             st.session_state.progress["Upload"] = "Failed"
@@ -234,7 +245,8 @@ def render_clean_page() -> None:
 
     st.subheader("Smart Workflow Automation")
     st.markdown('<span title="Run an AI-suggested cleaning workflow automatically">ℹ️</span>', unsafe_allow_html=True)
-    if st.button("Run Smart Workflow"):
+    if st.button("Run Smart Workflow", key="run_smart_workflow_button"):
+        st.write("Debug: Run Smart Workflow button clicked")
         with st.spinner("Generating and executing workflow..."):
             try:
                 workflow = suggest_workflow(df[available_columns])
@@ -255,6 +267,9 @@ def render_clean_page() -> None:
                 st.session_state.suggestions = get_cached_suggestions(cleaned_df[[col for col in cleaned_df.columns if col not in st.session_state.dropped_columns]])
                 st.success("Smart Workflow executed successfully!")
                 st.session_state.progress["Clean"] = "Done"
+                # Save session state before rerunning
+                from app import save_auth_state
+                save_auth_state()
                 st.rerun()
             except Exception as e:
                 st.error(f"Error executing smart workflow: {str(e)}")

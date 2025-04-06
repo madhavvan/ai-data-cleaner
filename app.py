@@ -2,6 +2,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import psycopg2
 from psycopg2 import sql
+import uuid  # For generating session tokens
 
 # Set page configuration as the first command
 st.set_page_config(page_title="Data Toy", layout="wide", initial_sidebar_state="expanded")
@@ -47,58 +48,95 @@ if 'progress' not in st.session_state:
     }
 if 'user_info' not in st.session_state:
     st.session_state.user_info = None
+if 'session_token' not in st.session_state:
+    st.session_state.session_token = None
 
 # Database connection using st.secrets
 def get_db_connection():
-    return psycopg2.connect(
-        dbname=st.secrets["DB_NAME"],
-        user=st.secrets["DB_USER"],
-        password=st.secrets["DB_PASSWORD"],
-        host=st.secrets["DB_HOST"],
-        port=st.secrets["DB_PORT"],
-        sslmode="require"
-    )
+    try:
+        return psycopg2.connect(
+            dbname=st.secrets["DB_NAME"],
+            user=st.secrets["DB_USER"],
+            password=st.secrets["DB_PASSWORD"],
+            host=st.secrets["DB_HOST"],
+            port=st.secrets["DB_PORT"],
+            sslmode="require"
+        )
+    except Exception as e:
+        st.error(f"Failed to connect to database: {str(e)}")
+        return None
 
 def init_db():
     conn = get_db_connection()
+    if conn is None:
+        return
     c = conn.cursor()
+    # Add session_token column to sessions table
     c.execute('''CREATE TABLE IF NOT EXISTS users 
                  (username TEXT PRIMARY KEY, email TEXT, name TEXT, password BYTEA, google_id TEXT, profile_picture TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS sessions 
-                 (username TEXT PRIMARY KEY, session_data BYTEA)''')
+                 (username TEXT PRIMARY KEY, session_token TEXT, session_data BYTEA)''')
     conn.commit()
     conn.close()
 
 # Call init_db at the start of the app to ensure the database is initialized
 init_db()
 
-# Restore authentication state on app startup
+# Restore authentication state on app startup using session token
 def restore_session():
-    if st.session_state.username:
-        # Check if the user has an active session in the database
+    st.write("Debug: Starting restore_session")
+    # Check for session token in query parameters
+    session_token = st.query_params.get('session_token', None)
+    st.write(f"Debug: Session token from query params: {session_token}")
+    if session_token:
         conn = get_db_connection()
+        if conn is None:
+            st.write("Debug: Failed to connect to database in restore_session")
+            return
         c = conn.cursor()
-        c.execute("SELECT session_data FROM sessions WHERE username = %s", (st.session_state.username,))
-        result = c.fetchone()
-        conn.close()
-        if result:
-            session_data = pickle.loads(result[0])
-            # Restore authentication state
-            st.session_state.authenticated = session_data.get('authenticated', False)
-            st.session_state.username = session_data.get('username', st.session_state.username)
-            st.session_state.user_info = session_data.get('user_info', None)
-            # Restore other session state variables
-            for key, value in session_data.items():
-                if key not in ['authenticated', 'username', 'user_info']:
-                    st.session_state[key] = value
+        try:
+            c.execute("SELECT username, session_data FROM sessions WHERE session_token = %s", (session_token,))
+            result = c.fetchone()
+            st.write(f"Debug: Database query result: {result}")
+            if result:
+                username, session_data = result
+                session_data = pickle.loads(session_data)
+                # Restore authentication state
+                st.session_state.authenticated = session_data.get('authenticated', False)
+                st.session_state.username = username
+                st.session_state.user_info = session_data.get('user_info', None)
+                st.session_state.session_token = session_token
+                st.session_state.page = session_data.get('page', "Upload")  # Restore the page
+                # Restore other session state variables
+                for key, value in session_data.items():
+                    if key not in ['authenticated', 'username', 'user_info', 'session_token', 'page']:
+                        st.session_state[key] = value
+                st.write(f"Debug: Session restored for user {username}, authenticated: {st.session_state.authenticated}, page: {st.session_state.page}")
+            else:
+                st.write("Debug: No session found for the given session token")
+        except Exception as e:
+            st.write(f"Debug: Error in restore_session: {str(e)}")
+        finally:
+            conn.close()
+    else:
+        st.write("Debug: No session token found in query parameters")
 
-# Save authentication state to the database
+# Save authentication state to the database with session token
 def save_auth_state():
     if st.session_state.username:
+        st.write("Debug: Starting save_auth_state")
+        # Generate a session token if it doesn't exist
+        if not st.session_state.session_token:
+            st.session_state.session_token = str(uuid.uuid4())
+            st.write(f"Debug: Generated new session token: {st.session_state.session_token}")
+        # Add session token to query parameters
+        st.query_params['session_token'] = st.session_state.session_token
+
         session_data = {
             'authenticated': st.session_state.authenticated,
             'username': st.session_state.username,
             'user_info': st.session_state.user_info,
+            'page': st.session_state.page,  # Save the current page
             'df': st.session_state.get('df'),
             'cleaned_df': st.session_state.get('cleaned_df'),
             'logs': st.session_state.get('logs'),
@@ -117,11 +155,19 @@ def save_auth_state():
         }
         session_blob = pickle.dumps(session_data)
         conn = get_db_connection()
+        if conn is None:
+            st.write("Debug: Failed to connect to database in save_auth_state")
+            return
         c = conn.cursor()
-        c.execute("INSERT INTO sessions (username, session_data) VALUES (%s, %s) ON CONFLICT (username) DO UPDATE SET session_data = %s",
-                  (st.session_state.username, session_blob, session_blob))
-        conn.commit()
-        conn.close()
+        try:
+            c.execute("INSERT INTO sessions (username, session_token, session_data) VALUES (%s, %s, %s) ON CONFLICT (username) DO UPDATE SET session_token = %s, session_data = %s",
+                      (st.session_state.username, st.session_state.session_token, session_blob, st.session_state.session_token, session_blob))
+            conn.commit()
+            st.write("Debug: Session state saved successfully")
+        except Exception as e:
+            st.write(f"Debug: Error in save_auth_state: {str(e)}")
+        finally:
+            conn.close()
 
 # Restore session on app startup
 restore_session()
@@ -130,6 +176,8 @@ def add_user(username: str, email: str, name: str, password: str = None, google_
     """Add a new user to the database with a hashed password, Google ID, and profile picture."""
     hashed_password = None if password is None else bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
     conn = get_db_connection()
+    if conn is None:
+        return False
     c = conn.cursor()
     try:
         c.execute(
@@ -146,6 +194,8 @@ def add_user(username: str, email: str, name: str, password: str = None, google_
 def verify_user(username: str, password: str) -> bool:
     """Verify user credentials."""
     conn = get_db_connection()
+    if conn is None:
+        return False
     c = conn.cursor()
     c.execute("SELECT password FROM users WHERE username = %s", (username,))
     result = c.fetchone()
@@ -167,6 +217,8 @@ def verify_user(username: str, password: str) -> bool:
 def get_user_by_google_id(google_id: str):
     """Get user by Google ID."""
     conn = get_db_connection()
+    if conn is None:
+        return None
     c = conn.cursor()
     c.execute("SELECT username, email, name, profile_picture FROM users WHERE google_id = %s", (google_id,))
     result = c.fetchone()
@@ -179,6 +231,8 @@ def save_session(username):
 
 def load_session(username):
     conn = get_db_connection()
+    if conn is None:
+        return
     c = conn.cursor()
     c.execute("SELECT session_data FROM sessions WHERE username = %s", (username,))
     result = c.fetchone()
@@ -186,7 +240,7 @@ def load_session(username):
     if result:
         session_data = pickle.loads(result[0])
         for key, value in session_data.items():
-            if key not in ['authenticated', 'username', 'user_info']:  # These are handled by restore_session
+            if key not in ['authenticated', 'username', 'user_info', 'session_token', 'page']:  # These are handled by restore_session
                 st.session_state[key] = value
 
 # Load CSS with theme support
@@ -564,7 +618,7 @@ if st.session_state.page == "Login":
             st.session_state.page = "Upload"
             st.session_state.user_info = None  # Reset Google user info
             load_session(username)
-            save_auth_state()  # Save authentication state
+            save_auth_state()  # Save authentication state with session token
             st.rerun()
         else:
             st.error("Incorrect username or password")
@@ -629,8 +683,12 @@ if st.session_state.page == "Login":
             st.session_state.user_info = user_info  # Store Google user info for profile picture
             st.session_state.page = "Upload"
             load_session(username)
-            save_auth_state()  # Save authentication state
-            st.query_params.clear()  # Clear query params
+            save_auth_state()  # Save authentication state with session token
+            # Preserve session_token in query parameters
+            session_token = st.session_state.session_token
+            st.query_params.clear()
+            if session_token:
+                st.query_params['session_token'] = session_token
             st.rerun()
 
     # Sign Up button with inline styles
@@ -640,6 +698,7 @@ if st.session_state.page == "Login":
         help="Click to create a new account."
     ):
         st.session_state.page = "Sign Up"
+        save_auth_state()
         st.rerun()
     # Apply inline styles to the sign-up button
     st.markdown(
@@ -803,6 +862,7 @@ elif st.session_state.page == "Sign Up":
         if add_user(new_username, new_email, new_name, new_password):
             st.success("Registration successful! Please log in.")
             st.session_state.page = "Login"
+            save_auth_state()
             st.rerun()
         else:
             st.error("Username already exists. Please choose a different username.")
@@ -837,6 +897,7 @@ elif st.session_state.page == "Sign Up":
         help="Click to return to the login page."
     ):
         st.session_state.page = "Login"
+        save_auth_state()
         st.rerun()
     st.markdown(
         f"""
@@ -896,16 +957,22 @@ if st.session_state.authenticated:
         st.sidebar.title("Navigation")
         st.sidebar.markdown("<p class='tagline'>Transform your data with AI magic.</p>", unsafe_allow_html=True)
 
-        page = st.sidebar.radio("Go to", ["Upload", "Clean", "Insights", "Visualize", "Predictive", "Share"])
+        page = st.sidebar.radio("Go to", ["Upload", "Clean", "Insights", "Visualize", "Predictive", "Share"], key="sidebar_page")
+        if page != st.session_state.page:
+            st.session_state.page = page
+            save_auth_state()
+            st.rerun()
 
         # Theme Toggle
         st.sidebar.subheader("Theme")
         theme_choice = st.sidebar.selectbox("Select Theme", ["Dark", "Light"], index=0 if st.session_state.theme == "dark" else 1)
         if theme_choice == "Dark" and st.session_state.theme != "dark":
             st.session_state.theme = "dark"
+            save_auth_state()
             st.rerun()
         elif theme_choice == "Light" and st.session_state.theme != "light":
             st.session_state.theme = "light"
+            save_auth_state()
             st.rerun()
 
         # Progress Tracker
@@ -956,13 +1023,16 @@ if st.session_state.authenticated:
             st.session_state.authenticated = False
             st.session_state.username = None
             st.session_state.user_info = None
+            st.session_state.session_token = None
             st.session_state.page = "Login"
             # Clear session data from the database
             conn = get_db_connection()
-            c = conn.cursor()
-            c.execute("DELETE FROM sessions WHERE username = %s", (username,))
-            conn.commit()
-            conn.close()
+            if conn:
+                c = conn.cursor()
+                c.execute("DELETE FROM sessions WHERE username = %s", (st.session_state.username,))
+                conn.commit()
+                conn.close()
+            st.query_params.clear()  # Clear session token from query parameters
             st.rerun()
 
         return page
