@@ -859,13 +859,13 @@ if st.session_state.authenticated:
                 with st.chat_message(message["role"]):
                     st.write(f"**{message['role'].capitalize()}:** {message['content']}")
 
-        chat_input = st.sidebar.chat_input("How can Data Toy help?")
+        chat_input = st.sidebar.chat_input("Ask Data Toy")
         if chat_input:
             df = st.session_state.get('cleaned_df') if st.session_state.get('cleaned_df') is not None else st.session_state.get('df')
             if df is not None:
                 st.session_state.chat_history.append({"role": "user", "content": chat_input})
                 with st.spinner("Processing your query..."):
-                    response = chat_with_gpt(df, chat_input)
+                    response = chat_with_gpt(df, chat_input, max_tokens=100)
                 st.session_state.chat_history.append({"role": "assistant", "content": response})
                 st.rerun()
             else:
