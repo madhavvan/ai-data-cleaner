@@ -12,62 +12,30 @@ from data_utils import (
     generate_synthetic_data, analyze_time_series
 )
 from predictive import render_predictive_page as render_predictive_page_external
-import pyarrow.parquet as pq  # For Parquet file support
+import pyarrow.parquet as pq
 
-# Cache expensive operations
 @st.cache_data
 def get_cached_suggestions(df: pd.DataFrame) -> List[Tuple[str, str]]:
-    """
-    Cache AI-driven cleaning suggestions to improve performance.
-
-    Args:
-        df (pd.DataFrame): Input DataFrame.
-
-    Returns:
-        List[Tuple[str, str]]: List of (suggestion, explanation) tuples.
-    """
     return get_cleaning_suggestions(df)
 
 def get_download_link(df: pd.DataFrame, filename: str) -> str:
-    """
-    Generate a download link for the dataset.
-
-    Args:
-        df (pd.DataFrame): DataFrame to download.
-        filename (str): Name of the file to download.
-
-    Returns:
-        str: HTML download link.
-    """
     csv = df.to_csv(index=False)
     b64 = base64.b64encode(csv.encode()).decode()
     return f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download {filename}</a>'
 
 def profile_dataset(df: pd.DataFrame) -> Dict[str, any]:
-    """
-    Profile the dataset to identify data quality issues and suggest fixes.
-
-    Args:
-        df (pd.DataFrame): Input DataFrame.
-
-    Returns:
-        Dict[str, any]: Profiling results with suggestions.
-    """
     profile = {}
     for col in df.columns:
         col_profile = {}
-        # Check for mixed data types
         col_types = df[col].apply(type).nunique()
         col_profile['mixed_types'] = col_types > 1
         col_profile['type_suggestion'] = f"Convert {col} to {df[col].dtype.name}" if col_types > 1 else None
         
-        # Check for inconsistent formats (e.g., dates in different formats)
         if pd.api.types.is_datetime64_any_dtype(df[col]):
             formats = df[col].dropna().apply(lambda x: x.strftime('%Y-%m-%d')).nunique()
             col_profile['inconsistent_formats'] = formats > 1
             col_profile['format_suggestion'] = "Standardize date format to YYYY-MM-DD" if formats > 1 else None
         
-        # Check for high missing value percentage
         missing_percentage = df[col].isna().mean() * 100
         col_profile['missing_percentage'] = missing_percentage
         col_profile['missing_suggestion'] = f"Consider filling or dropping {col} (missing {missing_percentage:.2f}%)" if missing_percentage > 10 else None
@@ -76,9 +44,6 @@ def profile_dataset(df: pd.DataFrame) -> Dict[str, any]:
     return profile
 
 def initialize_session_state() -> None:
-    """
-    Initialize session state variables for the application.
-    """
     defaults = {
         'df': None,
         'cleaned_df': None,
@@ -106,17 +71,11 @@ def initialize_session_state() -> None:
             st.session_state[key] = value
 
 def render_upload_page() -> None:
-    """
-    Render the upload page UI with session persistence, extended file format support, and data profiling.
-    """
     st.title("Upload Your Dataset")
     st.markdown("<p class='welcome'>Start your data journey here!</p>", unsafe_allow_html=True)
 
     initialize_session_state()
-
-    # Update progress
     st.session_state.progress["Upload"] = "In Progress"
-
 
     if st.session_state.df is not None:
         st.subheader("Original Dataset Preview (First 10 Rows)")
@@ -135,7 +94,7 @@ def render_upload_page() -> None:
     if uploaded_file:
         try:
             with st.spinner("Loading dataset..."):
-                if uploaded_file.size > 50 * 1024 * 1024:  # 50MB
+                if uploaded_file.size > 50 * 1024 * 1024:
                     st.warning("File size exceeds 50MB. Using chunked processing.")
                     if uploaded_file.name.endswith('.csv'):
                         chunks = pd.read_csv(uploaded_file, chunksize=10000)
@@ -156,7 +115,6 @@ def render_upload_page() -> None:
                             progress_bar.progress(min((i + 1) / total_chunks, 1.0))
                         df = pd.concat(df_list, ignore_index=True)
                     elif uploaded_file.name.endswith('.parquet'):
-                        # Parquet files are typically smaller and more efficient, so we'll read directly
                         df = pq.read_table(uploaded_file).to_pandas()
                     else:
                         df = pd.read_excel(uploaded_file)
@@ -170,61 +128,56 @@ def render_upload_page() -> None:
                     else:
                         df = pd.read_excel(uploaded_file)
 
-            # Validate dataset size and structure
-            if df.shape[0] > 4000:
-                st.info(f"Large dataset detected ({df.shape[0]} rows). Processing optimized for performance.")
-            if df.empty:
-                st.error("Uploaded dataset is empty. Please upload a valid file.")
-                return
+                if df.shape[0] > 4000:
+                    st.info(f"Large dataset detected ({df.shape[0]} rows). Processing optimized for performance.")
+                if df.empty:
+                    st.error("Uploaded dataset is empty. Please upload a valid file.")
+                    return
 
-            # Data Profiling
-            with st.spinner("Profiling dataset..."):
-                profile = profile_dataset(df)
-                st.subheader("Dataset Profile")
-                for col, info in profile.items():
-                    if any(info.values()):  # Only show columns with issues
-                        st.write(f"**Column: {col}**")
-                        if info['mixed_types']:
-                            st.write(f"- Mixed Types Detected: {info['mixed_types']}")
-                            st.write(f"  Suggestion: {info['type_suggestion']}")
-                        if info.get('inconsistent_formats'):
-                            st.write(f"- Inconsistent Formats: {info['inconsistent_formats']}")
-                            st.write(f"  Suggestion: {info['format_suggestion']}")
-                        if info['missing_percentage'] > 10:
-                            st.write(f"- Missing Values: {info['missing_percentage']:.2f}%")
-                            st.write(f"  Suggestion: {info['missing_suggestion']}")
+                with st.spinner("Profiling dataset..."):
+                    profile = profile_dataset(df)
+                    st.subheader("Dataset Profile")
+                    for col, info in profile.items():
+                        if any(info.values()):
+                            st.write(f"**Column: {col}**")
+                            if info['mixed_types']:
+                                st.write(f"- Mixed Types Detected: {info['mixed_types']}")
+                                st.write(f"  Suggestion: {info['type_suggestion']}")
+                            if info.get('inconsistent_formats'):
+                                st.write(f"- Inconsistent Formats: {info['inconsistent_formats']}")
+                                st.write(f"  Suggestion: {info['format_suggestion']}")
+                            if info['missing_percentage'] > 10:
+                                st.write(f"- Missing Values: {info['missing_percentage']:.2f}%")
+                                st.write(f"  Suggestion: {info['missing_suggestion']}")
 
-            st.session_state.df = df
-            st.session_state.cleaned_df = None
-            st.session_state.logs = []
-            st.session_state.suggestions = []
-            st.session_state.previous_states = []
-            st.session_state.redo_states = []
-            st.session_state.chat_history = []
-            st.session_state.cleaning_history = []
-            st.session_state.cleaning_templates = {}
-            st.session_state.ai_suggestions_used = 0
-            st.session_state.dropped_columns = []
+                st.session_state.df = df
+                st.session_state.cleaned_df = None
+                st.session_state.logs = []
+                st.session_state.suggestions = []
+                st.session_state.previous_states = []
+                st.session_state.redo_states = []
+                st.session_state.chat_history = []
+                st.session_state.cleaning_history = []
+                st.session_state.cleaning_templates = {}
+                st.session_state.ai_suggestions_used = 0
+                st.session_state.dropped_columns = []
 
-            st.subheader("Dataset Preview (First 10 Rows)")
-            st.dataframe(df.head(10))
-            st.subheader("Basic Metadata")
-            score = calculate_health_score(df)
-            st.write(f"Rows: {df.shape[0]}")
-            st.write(f"Columns: {df.shape[1]}")
-            st.write(f"Missing Values: {df.isna().sum().sum()}")
-            st.progress(score / 100)
-            st.write(f"Dataset Health Score: {score}/100")
-            st.success("Dataset uploaded successfully!")
-            st.session_state.progress["Upload"] = "Done"
+                st.subheader("Dataset Preview (First 10 Rows)")
+                st.dataframe(df.head(10))
+                st.subheader("Basic Metadata")
+                score = calculate_health_score(df)
+                st.write(f"Rows: {df.shape[0]}")
+                st.write(f"Columns: {df.shape[1]}")
+                st.write(f"Missing Values: {df.isna().sum().sum()}")
+                st.progress(score / 100)
+                st.write(f"Dataset Health Score: {score}/100")
+                st.success("Dataset uploaded successfully!")
+                st.session_state.progress["Upload"] = "Done"
         except Exception as e:
-            st.error(f"Error loading file: {str(e)}. Please ensure the file is a valid CSV, Excel, JSON, or Parquet file.")
+            st.error(f"Error loading file: {str(e)}")
             st.session_state.progress["Upload"] = "Failed"
 
 def render_clean_page() -> None:
-    """
-    Render the clean page UI with robust multi-change logic, custom rules engine, tooltips, and progress tracking.
-    """
     st.title("Clean Your Dataset")
     if 'df' not in st.session_state or st.session_state.df is None:
         st.warning("Please upload a dataset first on the Upload page.")
@@ -237,10 +190,8 @@ def render_clean_page() -> None:
         st.error("No columns available for cleaning. Please upload a new dataset.")
         return
 
-    # Update progress
     st.session_state.progress["Clean"] = "In Progress"
 
-    # Display progress tracker
     st.subheader("Your Progress")
     progress_text = ""
     for step, status in st.session_state.progress.items():
@@ -282,7 +233,7 @@ def render_clean_page() -> None:
                 st.session_state.progress["Clean"] = "Done"
                 st.rerun()
             except Exception as e:
-                st.error(f"Error executing smart workflow: {str(e)}. Please check the dataset and try again.")
+                st.error(f"Error executing smart workflow: {str(e)}")
                 st.session_state.progress["Clean"] = "Failed"
 
     with st.form(key="cleaning_form", clear_on_submit=False):
@@ -316,13 +267,13 @@ def render_clean_page() -> None:
             columns_to_drop = st.multiselect(
                 "Select columns to drop", 
                 available_columns, 
-                help="Choose columns to remove from the dataset. These columns will not appear in subsequent steps."
+                help="Choose columns to remove from the dataset"
             )
         
         with custom_rules_container:
             with st.expander("Custom Cleaning Rules", expanded=False):
                 st.markdown("**Define custom cleaning rules**")
-                st.markdown('<span title="Create rules like \'if column X > 100, set to NaN\' to apply custom transformations">ℹ️</span>', unsafe_allow_html=True)
+                st.markdown('<span title="Create rules like \'if column X > 100, set to NaN\'">ℹ️</span>', unsafe_allow_html=True)
                 num_rules = st.number_input("Number of Custom Rules", min_value=0, max_value=10, value=0, step=1)
                 for i in range(num_rules):
                     with st.container():
@@ -346,68 +297,68 @@ def render_clean_page() -> None:
         with replace_container:
             with st.expander("Custom Value Replacement", expanded=False):
                 st.markdown("**Replace unwanted values (e.g., '?' for missing data)**")
-                st.markdown('<span title="Replace specific values across selected columns (e.g., \'?\' with NaN)">ℹ️</span>', unsafe_allow_html=True)
+                st.markdown('<span title="Replace specific values across selected columns">ℹ️</span>', unsafe_allow_html=True)
                 replace_value = st.text_input(
                     "Value to replace (e.g., ?, 999, Unknown)", 
                     "", 
-                    help="Enter the value you want to replace. Case-insensitive matching will be applied."
+                    help="Enter the value you want to replace"
                 )
                 replace_with = st.radio(
                     "Replace with", 
                     ["NaN", "?", "0", "Custom"], 
-                    help="Select what to replace the value with. 'NaN' is recommended for missing data."
+                    help="Select what to replace the value with"
                 )
                 if replace_with == "Custom":
                     replace_with = st.text_input(
                         "Custom replacement value", 
                         "", 
-                        help="Enter a custom replacement value."
+                        help="Enter a custom replacement value"
                     )
                 replace_scope = st.radio(
                     "Apply to", 
                     ["All columns", "Numeric columns", "Categorical columns"], 
-                    help="Choose which columns to apply the replacement to."
+                    help="Choose which columns to apply the replacement to"
                 )
         
         with encode_container:
             with st.expander("Convert Categorical to Numerical", expanded=False):
-                st.markdown('<span title="Convert categorical columns to numerical values for ML compatibility">ℹ️</span>', unsafe_allow_html=True)
+                st.markdown('<span title="Convert categorical columns to numerical values">ℹ️</span>', unsafe_allow_html=True)
                 cat_cols = [col for col in df[available_columns].select_dtypes(include=['object', 'category']).columns.tolist() if col in available_columns]
                 encode_cols = st.multiselect(
                     "Select categorical columns to convert", 
                     cat_cols, 
-                    help="Choose categorical columns to convert to numerical."
+                    help="Choose categorical columns to convert to numerical"
                 )
                 encode_method = st.radio(
                     "Conversion method", 
                     ["Label Encoding", "One-Hot Encoding"], 
-                    help="Label Encoding assigns integers; One-Hot creates dummy columns."
+                    help="Label Encoding assigns integers; One-Hot creates dummy columns"
                 )
         
         with enrich_container:
             with st.expander("Smart Data Enrichment", expanded=False):
-                st.markdown('<span title="Enrich data with external information (e.g., geolocation from addresses)">ℹ️</span>', unsafe_allow_html=True)
+                st.markdown('<span title="Enrich data with external info (e.g., geolocation)">ℹ️</span>', unsafe_allow_html=True)
                 enrich_col = st.selectbox(
                     "Column to Enrich (e.g., address)", 
                     ["None"] + available_columns, 
-                    help="Select a column to enrich with external data."
+                    help="Select a column to enrich with external data"
                 )
                 enrich_api_key = st.text_input(
                     "Google API Key (for geolocation)", 
                     type="password", 
-                    help="Enter your Google Maps API key."
+                    help="Enter your Google Maps API key"
                 )
                 if enrich_col != "None" and not enrich_api_key:
                     st.warning("Google API Key is required for data enrichment.")
         
         with ai_container:
             with st.expander("AI Cleaning Suggestions", expanded=True):
-                st.markdown('<span title="AI-driven suggestions to automate data cleaning (e.g., fill missing values, remove duplicates)">ℹ️</span>', unsafe_allow_html=True)
+                st.markdown('<span title="AI-driven suggestions to automate data cleaning">ℹ️</span>', unsafe_allow_html=True)
                 for suggestion, explanation in st.session_state.suggestions:
                     if "Based on the provided dataset analysis" in suggestion:
                         st.markdown(f"**{suggestion}** - {explanation}")
                     else:
-                        if st.checkbox(f"{suggestion}", key=suggestion):
+                        if st.checkbox(f"{suggestion}", key=f"suggestion_{suggestion}"):
                             selected_suggestions.append((suggestion, explanation))
                             st.session_state.ai_suggestions_used += 1
                             st.markdown(f"**Explanation:** {explanation}")
@@ -436,17 +387,17 @@ def render_clean_page() -> None:
         
         with anomaly_container:
             with st.expander("Anomaly Detection", expanded=False):
-                st.markdown('<span title="Detect outliers in numerical columns using Isolation Forest algorithm">ℹ️</span>', unsafe_allow_html=True)
+                st.markdown('<span title="Detect outliers in numerical columns">ℹ️</span>', unsafe_allow_html=True)
                 num_cols = [col for col in df[available_columns].select_dtypes(include=['int64', 'float64']).columns.tolist() if col in available_columns]
                 anomaly_cols = st.multiselect(
                     "Select numerical columns for anomaly detection", 
                     num_cols, 
-                    help="Detect outliers using AI."
+                    help="Detect outliers using AI"
                 )
                 contamination = st.slider(
                     "Contamination factor", 
                     0.01, 0.5, 0.1, 
-                    help="Percentage of data expected to be anomalies."
+                    help="Percentage of data expected to be anomalies"
                 )
                 if anomaly_cols:
                     with st.spinner("Detecting anomalies..."):
@@ -455,22 +406,22 @@ def render_clean_page() -> None:
                             st.write("Anomalies Detected:")
                             st.json(anomalies)
                         except Exception as e:
-                            st.error(f"Error detecting anomalies: {str(e)}. Please ensure the selected columns contain valid numerical data.")
+                            st.error(f"Error detecting anomalies: {str(e)}")
 
         with ml_container:
             with st.expander("One-Click ML Deployment", expanded=False):
-                st.markdown('<span title="Train a machine learning model and deploy it as a Streamlit app with a single click">ℹ️</span>', unsafe_allow_html=True)
+                st.markdown('<span title="Train a machine learning model and deploy it">ℹ️</span>', unsafe_allow_html=True)
                 target_col = st.selectbox(
                     "Target Column (to predict)", 
                     available_columns, 
-                    help="Column to predict with ML."
+                    help="Column to predict with ML"
                 )
                 feature_cols = st.multiselect(
                     "Feature Columns", 
                     [col for col in available_columns if col != target_col], 
-                    help="Columns to use as predictors."
+                    help="Columns to use as predictors"
                 )
-                train_ml = st.checkbox("Train and Deploy ML Model", help="Generate a prediction app.")
+                train_ml = st.checkbox("Train and Deploy ML Model", help="Generate a prediction app")
                 if train_ml and not (target_col and feature_cols):
                     st.warning("Please select a target column and at least one feature column for ML deployment.")
 
@@ -498,7 +449,6 @@ def render_clean_page() -> None:
         else:
             with st.spinner("Processing cleaning operations..."):
                 try:
-                    # Validate inputs for custom value replacement
                     if replace_value.strip() and replace_with:
                         if replace_with == "Custom" and not replace_with.strip():
                             st.error("Please provide a custom replacement value.")
@@ -515,7 +465,6 @@ def render_clean_page() -> None:
                         train_ml=train_ml, target_col=target_col, feature_cols=feature_cols
                     )
 
-                    # Apply custom cleaning rules
                     for rule in custom_rules:
                         col = rule["column"]
                         condition = rule["condition"]
@@ -528,11 +477,11 @@ def render_clean_page() -> None:
                                 mask = cleaned_df[col] > threshold
                             elif condition == "less than":
                                 mask = cleaned_df[col] < threshold
-                            else:  # equal to
+                            else:
                                 mask = cleaned_df[col] == threshold
                             
                             if action == "Set to NaN":
-                                cleaned_df.loc[mask, col] = np.nan
+                                cleaned_df.loc[mask, col] = pd.NA
                             else:
                                 cleaned_df.loc[mask, col] = action_value
                             
@@ -564,18 +513,16 @@ def render_clean_page() -> None:
                         st.session_state.suggestions = get_cached_suggestions(cleaned_df[[col for col in cleaned_df.columns if col not in st.session_state.dropped_columns]])
                         st.success("Changes applied successfully!")
                         st.session_state.progress["Clean"] = "Done"
-                        # Collapse the Custom Value Replacement section after applying changes
-                        st.session_state['replace_expanded'] = False
                         st.rerun()
                 except Exception as e:
-                    st.error(f"Error processing cleaning operations: {str(e)}. Please check your inputs and try again.")
+                    st.error(f"Error processing cleaning operations: {str(e)}")
                     st.session_state.progress["Clean"] = "Failed"
 
     with st.expander("Save/Apply Cleaning Templates", expanded=False):
         st.subheader("Save/Apply Cleaning Templates")
-        st.markdown('<span title="Save your cleaning configuration as a template to reuse later, or apply a saved template">ℹ️</span>', unsafe_allow_html=True)
+        st.markdown('<span title="Save your cleaning configuration as a template to reuse later">ℹ️</span>', unsafe_allow_html=True)
         with st.form(key="template_form"):
-            template_name = st.text_input("Template Name", "", help="Enter a name to save this cleaning configuration.")
+            template_name = st.text_input("Template Name", "", help="Enter a name to save this cleaning configuration")
             save_template_button = st.form_submit_button("Save as Template")
 
             if save_template_button and template_name:
@@ -640,7 +587,7 @@ def render_clean_page() -> None:
                             st.session_state.progress["Clean"] = "Done"
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Error applying template: {str(e)}. Please check the template and try again.")
+                            st.error(f"Error applying template: {str(e)}")
                             st.session_state.progress["Clean"] = "Failed"
 
     col1, col2 = st.columns(2)
@@ -701,7 +648,6 @@ def render_clean_page() -> None:
         if view_option == "First 10 Rows":
             st.dataframe(st.session_state.cleaned_df.head(10))
         else:
-            # Display full dataset with scrollable view (pagination already removed)
             st.dataframe(st.session_state.cleaned_df, use_container_width=True, height=600)
         
         st.subheader("Cleaning Summary")
@@ -715,15 +661,11 @@ def render_clean_page() -> None:
                    unsafe_allow_html=True)
 
 def render_insights_page() -> None:
-    """
-    Render the insights page with natural language generation.
-    """
     st.title("Insights Dashboard")
     if 'df' not in st.session_state or st.session_state.df is None:
         st.warning("Please upload a dataset first on the Upload page.")
         return
 
-    # Update progress
     st.session_state.progress["Insights"] = "In Progress"
 
     df = st.session_state.cleaned_df if st.session_state.cleaned_df is not None else st.session_state.df
@@ -737,19 +679,15 @@ def render_insights_page() -> None:
                 st.write(f"- {insight}")
             st.session_state.progress["Insights"] = "Done"
         except Exception as e:
-            st.error(f"Error generating insights: {str(e)}. Please ensure the dataset is valid and try again.")
+            st.error(f"Error generating insights: {str(e)}")
             st.session_state.progress["Insights"] = "Failed"
 
 def render_predictive_page(df: pd.DataFrame) -> None:
-    """
-    Render the predictive analytics page with ML model training, forecasting, and clustering.
-    """
     st.title("Predictive Analytics")
     if 'df' not in st.session_state or st.session_state.df is None:
         st.warning("Please upload a dataset first on the Upload page.")
         return
 
-    # Update progress
     st.session_state.progress["Predictive"] = "In Progress"
 
     available_columns = [col for col in df.columns if col not in st.session_state.dropped_columns]
@@ -776,7 +714,7 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                                             f"synthetic_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
                            unsafe_allow_html=True)
             except Exception as e:
-                st.error(f"Error generating synthetic data: {str(e)}. Please check the dataset and try again.")
+                st.error(f"Error generating synthetic data: {str(e)}")
                 st.session_state.progress["Predictive"] = "Failed"
 
     st.subheader("Time Series Forecasting")
@@ -784,7 +722,7 @@ def render_predictive_page(df: pd.DataFrame) -> None:
     if time_cols:
         forecast_col = st.selectbox("Select time series column", time_cols)
         periods = st.slider("Forecast periods", 1, 30, 5)
-        freq = st.selectbox("Frequency", ["D", "M", "Y"], help="Select the frequency of the time series data.")
+        freq = st.selectbox("Frequency", ["D", "M", "Y"], help="Select the frequency of the time series data")
         if st.button("Forecast"):
             with st.spinner("Forecasting..."):
                 try:
@@ -795,7 +733,7 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                                                 f"forecast_{forecast_col}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
                                unsafe_allow_html=True)
                 except Exception as e:
-                    st.error(f"Error forecasting time series: {str(e)}. Please ensure the time column is in datetime format.")
+                    st.error(f"Error forecasting time series: {str(e)}")
                     st.session_state.progress["Predictive"] = "Failed"
     else:
         st.info("No datetime columns found for time series forecasting.")
@@ -816,10 +754,10 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                         st.write("Residual Component:")
                         st.line_chart(decomposition.get("residual"))
                     else:
-                        st.error("Failed to decompose time series. Ensure the column has sufficient data.")
+                        st.error("Failed to decompose time series")
                         st.session_state.progress["Predictive"] = "Failed"
                 except Exception as e:
-                    st.error(f"Error decomposing time series: {str(e)}. Please check the selected column.")
+                    st.error(f"Error decomposing time series: {str(e)}")
                     st.session_state.progress["Predictive"] = "Failed"
     else:
         st.info("No datetime columns found for time series decomposition.")
@@ -830,7 +768,7 @@ def render_predictive_page(df: pd.DataFrame) -> None:
     n_clusters = st.slider("Number of clusters", 2, 10, 3)
     if st.button("Perform Clustering", key="ui_perform_clustering"):
         if len(cluster_cols) < 2:
-            st.warning("Please select at least two columns for clustering.")
+            st.warning("Please select at least two columns for clustering")
         else:
             with st.spinner("Performing clustering..."):
                 try:
@@ -849,5 +787,5 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                                unsafe_allow_html=True)
                     st.session_state.progress["Predictive"] = "Done"
                 except Exception as e:
-                    st.error(f"Error performing clustering: {str(e)}. Please ensure the selected columns contain valid numerical data.")
+                    st.error(f"Error performing clustering: {str(e)}")
                     st.session_state.progress["Predictive"] = "Failed"
