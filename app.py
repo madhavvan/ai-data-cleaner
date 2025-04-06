@@ -1,6 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
+# Set page configuration
 st.set_page_config(page_title="Data Toy", layout="wide", initial_sidebar_state="expanded")
 
 import os
@@ -14,6 +15,7 @@ import bcrypt
 from authlib.integrations.requests_client import OAuth2Session
 import requests
 
+# Google OAuth Configuration
 GOOGLE_CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
 GOOGLE_CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
 GOOGLE_REDIRECT_URI = "https://madhavvan-ai-data-cleaner-app-djmiue.streamlit.app"
@@ -22,6 +24,7 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 SCOPES = ["openid", "email", "profile"]
 
+# Initialize session state
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 if 'theme' not in st.session_state:
@@ -44,6 +47,7 @@ if 'progress' not in st.session_state:
 if 'user_info' not in st.session_state:
     st.session_state.user_info = None
 
+# Database Setup for Users and Sessions
 def init_db():
     conn = sqlite3.connect('datatoy_users.db')
     c = conn.cursor()
@@ -129,97 +133,201 @@ def load_session(username):
         for key, value in session_data.items():
             st.session_state[key] = value
 
+# Load CSS with theme support
 def load_css(theme: str = "dark") -> None:
-    css = f"""
-    body {{
+    css = """
+    body {
         font-family: 'Roboto', sans-serif !important;
         margin: 0;
         padding: 0;
-    }}
-    body.{theme}-theme {{
+    }
+
+    body.{theme}-theme {
         display: block !important;
-    }}
-    body.{theme}-theme .stApp {{
-        background: linear-gradient(to bottom right, {'#1C2526, #2A3B47' if theme == 'dark' else '#F0F4F8, #D9E2EC'}) !important;
-        color: {'#FFFFFF' if theme == 'dark' else '#000000'} !important;
-    }}
-    body.{theme}-theme .css-1d391kg {{
-        background-color: {'#1C2526' if theme == 'dark' else '#D9E2EC'} !important;
-        color: {'#FFFFFF' if theme == 'dark' else '#000000'} !important;
-    }}
-    body.{theme}-theme .css-1d391kg .tagline {{
+    }
+
+    /* App-wide styles for dark theme */
+    body.dark-theme .stApp {
+        background: linear-gradient(to bottom right, #1C2526, #2A3B47) !important;
+        color: #FFFFFF !important;
+    }
+
+    body.dark-theme .css-1d391kg {
+        background-color: #1C2526 !important;
+        color: #FFFFFF !important;
+    }
+
+    body.dark-theme .css-1d391kg .tagline {
         font-size: 16px !important;
-        color: {'#1E90FF' if theme == 'dark' else '#0066CC'} !important;
+        color: #1E90FF !important;
         font-style: italic !important;
-    }}
-    body.{theme}-theme h1 {{
-        color: {'#1E90FF' if theme == 'dark' else '#0066CC'} !important;
+    }
+
+    body.dark-theme h1 {
+        color: #1E90FF !important;
         font-family: 'Roboto', sans-serif !important;
-    }}
-    body.{theme}-theme h2, body.{theme}-theme h3 {{
-        color: {'#FFD700' if theme == 'dark' else '#CC9900'} !important;
+    }
+
+    body.dark-theme h2, body.dark-theme h3 {
+        color: #FFD700 !important;
         font-family: 'Roboto', sans-serif !important;
-    }}
-    body.{theme}-theme .stButton > button {{
-        background-color: {'#1E90FF' if theme == 'dark' else '#0066CC'} !important;
+    }
+
+    body.dark-theme .stButton > button {
+        background-color: #1E90FF !important;
         color: white !important;
         border-radius: 5px !important;
         transition: background-color 0.3s !important;
         font-family: 'Roboto', sans-serif !important;
         border: none !important;
-    }}
-    body.{theme}-theme .stButton > button:hover {{
-        background-color: {'#FFD700' if theme == 'dark' else '#CC9900'} !important;
-        color: {'#1C2526' if theme == 'dark' else '#FFFFFF'} !important;
-    }}
-    body.{theme}-theme .stContainer {{
-        background-color: {'rgba(255, 255, 255, 0.1)' if theme == 'dark' else 'rgba(0, 0, 0, 0.05)'} !important;
+    }
+
+    body.dark-theme .stButton > button:hover {
+        background-color: #FFD700 !important;
+        color: #1C2526 !important;
+    }
+
+    body.dark-theme .stContainer {
+        background-color: rgba(255, 255, 255, 0.1) !important;
         border-radius: 10px !important;
         padding: 15px !important;
-        box-shadow: 0 4px 6px {'rgba(0, 0, 0, 0.1)' if theme == 'dark' else 'rgba(0, 0, 0, 0.05)'} !important;
-    }}
-    body.{theme}-theme .stExpander {{
-        background-color: {'rgba(255, 255, 255, 0.05)' if theme == 'dark' else 'rgba(0, 0, 0, 0.02)'} !important;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+    }
+
+    body.dark-theme .stExpander {
+        background-color: rgba(255, 255, 255, 0.05) !important;
         border-radius: 10px !important;
-    }}
-    body.{theme}-theme .stTextInput > div > div > input,
-    body.{theme}-theme .stSelectbox > div > div > div,
-    body.{theme}-theme .stMultiSelect > div > div > div {{
-        background-color: {'#2A3B47' if theme == 'dark' else '#F0F4F8'} !important;
-        color: {'#FFFFFF' if theme == 'dark' else '#000000'} !important;
-        border: 1px solid {'#1E90FF' if theme == 'dark' else '#0066CC'} !important;
+    }
+
+    body.dark-theme .stTextInput > div > div > input,
+    body.dark-theme .stSelectbox > div > div > div,
+    body.dark-theme .stMultiSelect > div > div > div {
+        background-color: #2A3B47 !important;
+        color: #FFFFFF !important;
+        border: 1px solid #1E90FF !important;
         border-radius: 5px !important;
-    }}
-    body.{theme}-theme .stTextInput > div > div > input:focus,
-    body.{theme}-theme .stSelectbox > div > div > div:focus,
-    body.{theme}-theme .stMultiSelect > div > div > div:focus {{
-        border-color: {'#FFD700' if theme == 'dark' else '#CC9900'} !important;
-        outline: none !important;
-        box-shadow: 0 0 5px {'rgba(255, 215, 0, 0.5)' if theme == 'dark' else 'rgba(204, 153, 0, 0.5)'} !important;
-    }}
-    body.{theme}-theme .stDataFrame {{
-        background-color: {'#2A3B47' if theme == 'dark' else '#F0F4F8'} !important;
+    }
+
+    body.dark-theme .stDataFrame {
+        background-color: #2A3B47 !important;
         border-radius: 10px !important;
         padding: 10px !important;
-    }}
-    body.{theme}-theme .stCheckbox, body.{theme}-theme .stRadio {{
+    }
+
+    body.dark-theme .stCheckbox, body.dark-theme .stRadio {
         margin-bottom: 10px !important;
-    }}
-    body.{theme}-theme .stProgress > div > div {{
-        background-color: {'#1E90FF' if theme == 'dark' else '#0066CC'} !important;
-    }}
-    body.{theme}-theme .stAlert {{
-        background-color: {'rgba(255, 255, 255, 0.1)' if theme == 'dark' else 'rgba(0, 0, 0, 0.05)'} !important;
-        color: {'#FFFFFF' if theme == 'dark' else '#000000'} !important;
+    }
+
+    body.dark-theme .stProgress > div > div {
+        background-color: #1E90FF !important;
+    }
+
+    body.dark-theme .stAlert {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+        color: #FFFFFF !important;
         border-radius: 5px !important;
-    }}
-    body.{theme}-theme div[data-baseweb="select"] > div {{
+    }
+
+    body.dark-theme div[data-baseweb="select"] > div {
         cursor: pointer !important;
-    }}
-    body.{theme}-theme div[data-baseweb="select"] > div:hover {{
-        background-color: {'#3C4F5C' if theme == 'dark' else '#D9E2EC'} !important;
-    }}
-    .google-login-button {{
+    }
+
+    body.dark-theme div[data-baseweb="select"] > div:hover {
+        background-color: #3C4F5C !important;
+    }
+
+    /* App-wide styles for light theme */
+    body.light-theme .stApp {
+        background: linear-gradient(to bottom right, #F0F4F8, #D9E2EC) !important;
+        color: #000000 !important;
+    }
+
+    body.light-theme .css-1d391kg {
+        background-color: #D9E2EC !important;
+        color: #000000 !important;
+    }
+
+    body.light-theme .css-1d391kg .tagline {
+        font-size: 16px !important;
+        color: #0066CC !important;
+        font-style: italic !important;
+    }
+
+    body.light-theme h1 {
+        color: #0066CC !important;
+        font-family: 'Roboto', sans-serif !important;
+    }
+
+    body.light-theme h2, body.light-theme h3 {
+        color: #CC9900 !important;
+        font-family: 'Roboto', sans-serif !important;
+    }
+
+    body.light-theme .stButton > button {
+        background-color: #0066CC !important;
+        color: white !important;
+        border-radius: 5px !important;
+        transition: background-color 0.3s !important;
+        font-family: 'Roboto', sans-serif !important;
+        border: none !important;
+    }
+
+    body.light-theme .stButton > button:hover {
+        background-color: #CC9900 !important;
+        color: #FFFFFF !important;
+    }
+
+    body.light-theme .stContainer {
+        background-color: rgba(0, 0, 0, 0.05) !important;
+        border-radius: 10px !important;
+        padding: 15px !important;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05) !important;
+    }
+
+    body.light-theme .stExpander {
+        background-color: rgba(0, 0, 0, 0.02) !important;
+        border-radius: 10px !important;
+    }
+
+    body.light-theme .stTextInput > div > div > input,
+    body.light-theme .stSelectbox > div > div > div,
+    body.light-theme .stMultiSelect > div > div > div {
+        background-color: #F0F4F8 !important;
+        color: #000000 !important;
+        border: 1px solid #0066CC !important;
+        border-radius: 5px !important;
+    }
+
+    body.light-theme .stDataFrame {
+        background-color: #F0F4F8 !important;
+        border-radius: 10px !important;
+        padding: 10px !important;
+    }
+
+    body.light-theme .stCheckbox, body.light-theme .stRadio {
+        margin-bottom: 10px !important;
+    }
+
+    body.light-theme .stProgress > div > div {
+        background-color: #0066CC !important;
+    }
+
+    body.light-theme .stAlert {
+        background-color: rgba(0, 0, 0, 0.05) !important;
+        color: #000000 !important;
+        border-radius: 5px !important;
+    }
+
+    body.light-theme div[data-baseweb="select"] > div {
+        cursor: pointer !important;
+    }
+
+    body.light-theme div[data-baseweb="select"] > div:hover {
+        background-color: #D9E2EC !important;
+    }
+
+    /* Google Login Button Styling (same for both themes) */
+    .google-login-button {
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
@@ -237,23 +345,27 @@ def load_css(theme: str = "dark") -> None:
         box-sizing: border-box !important;
         margin: 10px auto !important;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1) !important;
-    }}
-    .google-login-button:hover {{
+    }
+
+    .google-login-button:hover {
         background-color: #F8FAFC !important;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
-    }}
-    .google-login-button img {{
+    }
+
+    .google-login-button img {
         width: 20px !important;
         height: 20px !important;
         margin-right: 10px !important;
-    }}
-    .google-login-button span {{
+    }
+
+    .google-login-button span {
         color: #757575 !important;
         font-family: 'Roboto', sans-serif !important;
-    }}
-    a.google-login-button {{
+    }
+
+    a.google-login-button {
         text-decoration: none !important;
-    }}
+    }
     """
     components.html(
         f"""
@@ -270,12 +382,14 @@ def load_css(theme: str = "dark") -> None:
         height=0
     )
 
+# Function to render a custom header without the logo
 def render_custom_header(page_title: str) -> None:
     header = st.container()
     with header:
         st.markdown(f"<h1 style='margin-top: 20px;'>{page_title}</h1>", unsafe_allow_html=True)
     st.markdown("<hr style='border: 1px solid #FFD700;'>", unsafe_allow_html=True)
 
+# Google OAuth Logic
 def get_google_auth_url():
     client = OAuth2Session(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, redirect_uri=GOOGLE_REDIRECT_URI, scope=SCOPES)
     auth_url, state = client.create_authorization_url(GOOGLE_AUTH_URL)
@@ -288,9 +402,11 @@ def handle_google_callback():
     user_info = requests.get(GOOGLE_USERINFO_URL, headers={'Authorization': f"Bearer {token['access_token']}"}).json()
     return user_info
 
+# Restore authentication state on page refresh
 if st.session_state.username:
     load_session(st.session_state.username)
 
+# Authentication Logic
 if st.session_state.page == "Login":
     load_css(st.session_state.theme)
     st.markdown(
@@ -302,7 +418,50 @@ if st.session_state.page == "Login":
     )
     
     username = st.text_input("Username", placeholder="Enter your username", key="username_input", help="Enter your username to log in.")
+    st.markdown(
+        f"""
+        <style>
+            #username_input input {{
+                background-color: {'#3C4F5C' if st.session_state.theme == 'dark' else '#F0F4F8'} !important;
+                color: {'#FFFFFF' if st.session_state.theme == 'dark' else '#000000'} !important;
+                border: 1px solid {'#1E90FF' if st.session_state.theme == 'dark' else '#0066CC'} !important;
+                border-radius: 5px !important;
+                padding: 10px !important;
+                font-size: 16px !important;
+                font-family: 'Roboto', sans-serif !important;
+            }}
+            #username_input input:focus {{
+                border-color: {'#FFD700' if st.session_state.theme == 'dark' else '#CC9900'} !important;
+                outline: none !important;
+                box-shadow: 0 0 5px {'rgba(255, 215, 0, 0.5)' if st.session_state.theme == 'dark' else 'rgba(204, 153, 0, 0.5)'} !important;
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
     password = st.text_input("Password", type="password", placeholder="Enter your password", key="password_input", help="Enter your password to log in.")
+    st.markdown(
+        f"""
+        <style>
+            #password_input input {{
+                background-color: {'#3C4F5C' if st.session_state.theme == 'dark' else '#F0F4F8'} !important;
+                color: {'#FFFFFF' if st.session_state.theme == 'dark' else '#000000'} !important;
+                border: 1px solid {'#1E90FF' if st.session_state.theme == 'dark' else '#0066CC'} !important;
+                border-radius: 5px !important;
+                padding: 10px !important;
+                font-size: 16px !important;
+                font-family: 'Roboto', sans-serif !important;
+            }}
+            #password_input input:focus {{
+                border-color: {'#FFD700' if st.session_state.theme == 'dark' else '#CC9900'} !important;
+                outline: none !important;
+                box-shadow: 0 0 5px {'rgba(255, 215, 0, 0.5)' if st.session_state.theme == 'dark' else 'rgba(204, 153, 0, 0.5)'} !important;
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
     
     if st.button("Login", key="login_button", help="Click to log in with your username and password."):
         if verify_user(username, password):
@@ -314,14 +473,38 @@ if st.session_state.page == "Login":
             st.rerun()
         else:
             st.error("Incorrect username or password")
+    st.markdown(
+        f"""
+        <style>
+            #login_button button {{
+                background-color: {'#1E90FF' if st.session_state.theme == 'dark' else '#0066CC'} !important;
+                color: #FFFFFF !important;
+                border: none !important;
+                border-radius: 5px !important;
+                padding: 10px 20px !important;
+                font-size: 16px !important;
+                cursor: pointer !important;
+                transition: background-color 0.3s !important;
+                display: block !important;
+                margin: 10px auto !important;
+                font-family: 'Roboto', sans-serif !important;
+            }}
+            #login_button button:hover {{
+                background-color: {'#FFD700' if st.session_state.theme == 'dark' else '#CC9900'} !important;
+                color: {'#1C2526' if st.session_state.theme == 'dark' else '#FFFFFF'} !important;
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
     auth_url = get_google_auth_url()
     st.markdown(
         f"""
         <a href="{auth_url}" target="_self" style="text-decoration: none;">
-            <div class="google-login-button">
-                <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google Icon"/>
-                <span>Sign in with Google</span>
+            <div class="google-login-button" style="display: flex; align-items: center; justify-content: center; background-color: #FFFFFF; color: #757575; border: 1px solid #DADCE0; border-radius: 4px; padding: 10px 20px; font-size: 16px; font-family: 'Roboto', sans-serif; font-weight: 500; cursor: pointer; transition: background-color 0.3s ease, box-shadow 0.3s ease; width: 100%; box-sizing: border-box; margin: 10px auto; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);">
+                <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google Icon" style="width: 20px; height: 20px; margin-right: 10px;"/>
+                <span style="color: #757575; font-family: 'Roboto', sans-serif;">Sign in with Google</span>
             </div>
         </a>
         """,
@@ -351,6 +534,30 @@ if st.session_state.page == "Login":
     if st.button("Sign Up", key="signup_button", help="Click to create a new account."):
         st.session_state.page = "Sign Up"
         st.rerun()
+    st.markdown(
+        f"""
+        <style>
+            #signup_button button {{
+                background-color: {'#1E90FF' if st.session_state.theme == 'dark' else '#0066CC'} !important;
+                color: #FFFFFF !important;
+                border: none !important;
+                border-radius: 5px !important;
+                padding: 10px 20px !important;
+                font-size: 16px !important;
+                cursor: pointer !important;
+                transition: background-color 0.3s !important;
+                display: block !important;
+                margin: 10px auto !important;
+                font-family: 'Roboto', sans-serif !important;
+            }}
+            #signup_button button:hover {{
+                background-color: {'#FFD700' if st.session_state.theme == 'dark' else '#CC9900'} !important;
+                color: {'#1C2526' if st.session_state.theme == 'dark' else '#FFFFFF'} !important;
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -365,9 +572,96 @@ elif st.session_state.page == "Sign Up":
     )
     
     new_username = st.text_input("New Username", placeholder="Choose a username", key="new_username_input", help="Choose a unique username for your account.")
+    st.markdown(
+        f"""
+        <style>
+            #new_username_input input {{
+                background-color: {'#3C4F5C' if st.session_state.theme == 'dark' else '#F0F4F8'} !important;
+                color: {'#FFFFFF' if st.session_state.theme == 'dark' else '#000000'} !important;
+                border: 1px solid {'#1E90FF' if st.session_state.theme == 'dark' else '#0066CC'} !important;
+                border-radius: 5px !important;
+                padding: 10px !important;
+                font-size: 16px !important;
+                font-family: 'Roboto', sans-serif !important;
+            }}
+            #new_username_input input:focus {{
+                border-color: {'#FFD700' if st.session_state.theme == 'dark' else '#CC9900'} !important;
+                outline: none !important;
+                box-shadow: 0 0 5px {'rgba(255, 215, 0, 0.5)' if st.session_state.theme == 'dark' else 'rgba(204, 153, 0, 0.5)'} !important;
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
     new_email = st.text_input("Email", placeholder="Enter your email", key="new_email_input", help="Enter your email address.")
+    st.markdown(
+        f"""
+        <style>
+            #new_email_input input {{
+                background-color: {'#3C4F5C' if st.session_state.theme == 'dark' else '#F0F4F8'} !important;
+                color: {'#FFFFFF' if st.session_state.theme == 'dark' else '#000000'} !important;
+                border: 1px solid {'#1E90FF' if st.session_state.theme == 'dark' else '#0066CC'} !important;
+                border-radius: 5px !important;
+                padding: 10px !important;
+                font-size: 16px !important;
+                font-family: 'Roboto', sans-serif !important;
+            }}
+            #new_email_input input:focus {{
+                border-color: {'#FFD700' if st.session_state.theme == 'dark' else '#CC9900'} !important;
+                outline: none !important;
+                box-shadow: 0 0 5px {'rgba(255, 215, 0, 0.5)' if st.session_state.theme == 'dark' else 'rgba(204, 153, 0, 0.5)'} !important;
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
     new_name = st.text_input("Name", placeholder="Enter your name", key="new_name_input", help="Enter your full name.")
+    st.markdown(
+        f"""
+        <style>
+            #new_name_input input {{
+                background-color: {'#3C4F5C' if st.session_state.theme == 'dark' else '#F0F4F8'} !important;
+                color: {'#FFFFFF' if st.session_state.theme == 'dark' else '#000000'} !important;
+                border: 1px solid {'#1E90FF' if st.session_state.theme == 'dark' else '#0066CC'} !important;
+                border-radius: 5px !important;
+                padding: 10px !important;
+                font-size: 16px !important;
+                font-family: 'Roboto', sans-serif !important;
+            }}
+            #new_name_input input:focus {{
+                border-color: {'#FFD700' if st.session_state.theme == 'dark' else '#CC9900'} !important;
+                outline: none !important;
+                box-shadow: 0 0 5px {'rgba(255, 215, 0, 0.5)' if st.session_state.theme == 'dark' else 'rgba(204, 153, 0, 0.5)'} !important;
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
     new_password = st.text_input("New Password", type="password", placeholder="Choose a password", key="new_password_input", help="Choose a secure password.")
+    st.markdown(
+        f"""
+        <style>
+            #new_password_input input {{
+                background-color: {'#3C4F5C' if st.session_state.theme == 'dark' else '#F0F4F8'} !important;
+                color: {'#FFFFFF' if st.session_state.theme == 'dark' else '#000000'} !important;
+                border: 1px solid {'#1E90FF' if st.session_state.theme == 'dark' else '#0066CC'} !important;
+                border-radius: 5px !important;
+                padding: 10px !important;
+                font-size: 16px !important;
+                font-family: 'Roboto', sans-serif !important;
+            }}
+            #new_password_input input:focus {{
+                border-color: {'#FFD700' if st.session_state.theme == 'dark' else '#CC9900'} !important;
+                outline: none !important;
+                box-shadow: 0 0 5px {'rgba(255, 215, 0, 0.5)' if st.session_state.theme == 'dark' else 'rgba(204, 153, 0, 0.5)'} !important;
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
     
     if st.button("Register", key="register_button", help="Click to register your account."):
         if add_user(new_username, new_email, new_name, new_password):
@@ -376,13 +670,62 @@ elif st.session_state.page == "Sign Up":
             st.rerun()
         else:
             st.error("Username already exists. Please choose a different username.")
+    st.markdown(
+        f"""
+        <style>
+            #register_button button {{
+                background-color: {'#1E90FF' if st.session_state.theme == 'dark' else '#0066CC'} !important;
+                color: #FFFFFF !important;
+                border: none !important;
+                border-radius: 5px !important;
+                padding: 10px 20px !important;
+                font-size: 16px !important;
+                cursor: pointer !important;
+                transition: background-color 0.3s !important;
+                display: block !important;
+                margin: 10px auto !important;
+                font-family: 'Roboto', sans-serif !important;
+            }}
+            #register_button button:hover {{
+                background-color: {'#FFD700' if st.session_state.theme == 'dark' else '#CC9900'} !important;
+                color: {'#1C2526' if st.session_state.theme == 'dark' else '#FFFFFF'} !important;
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
     
     if st.button("Back to Login", key="back_to_login_button", help="Click to return to the login page."):
         st.session_state.page = "Login"
         st.rerun()
+    st.markdown(
+        f"""
+        <style>
+            #back_to_login_button button {{
+                background-color: {'#1E90FF' if st.session_state.theme == 'dark' else '#0066CC'} !important;
+                color: #FFFFFF !important;
+                border: none !important;
+                border-radius: 5px !important;
+                padding: 10px 20px !important;
+                font-size: 16px !important;
+                cursor: pointer !important;
+                transition: background-color 0.3s !important;
+                display: block !important;
+                margin: 10px auto !important;
+                font-family: 'Roboto', sans-serif !important;
+            }}
+            #back_to_login_button button:hover {{
+                background-color: {'#FFD700' if st.session_state.theme == 'dark' else '#CC9900'} !important;
+                color: {'#1C2526' if st.session_state.theme == 'dark' else '#FFFFFF'} !important;
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
     
     st.markdown('</div>', unsafe_allow_html=True)
 
+# Main App Logic (after authentication)
 if st.session_state.authenticated:
     load_css(st.session_state.theme)
     def setup_sidebar(logo_path: str = "images/datatoy_logo.png") -> Optional[str]:
