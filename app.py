@@ -1,5 +1,7 @@
 import streamlit as st
-import streamlit.components.v1 as components  # Import components for HTML injection
+import streamlit.components.v1 as components
+import psycopg2
+from psycopg2 import sql
 
 # Set page configuration as the first command
 st.set_page_config(page_title="Data Toy", layout="wide", initial_sidebar_state="expanded")
@@ -9,7 +11,6 @@ from typing import Optional
 from ui import render_upload_page, render_clean_page, render_insights_page, render_predictive_page
 from visualizations import render_visualization_page
 from data_utils import chat_with_gpt, AI_AVAILABLE
-import sqlite3
 import pickle
 import bcrypt
 from authlib.integrations.requests_client import OAuth2Session
@@ -45,16 +46,26 @@ if 'progress' not in st.session_state:
         "Share": "Not Started"
     }
 if 'user_info' not in st.session_state:
-    st.session_state.user_info = None  # To store Google user info (e.g., profile picture)
+    st.session_state.user_info = None
 
-# Database Setup for Users and Sessions
+# Database connection using st.secrets
+def get_db_connection():
+    return psycopg2.connect(
+        dbname=st.secrets["DB_NAME"],
+        user=st.secrets["DB_USER"],
+        password=st.secrets["DB_PASSWORD"],
+        host=st.secrets["DB_HOST"],
+        port=st.secrets["DB_PORT"],
+        sslmode="require"
+    )
+
 def init_db():
-    conn = sqlite3.connect('datatoy_users.db')
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users 
                  (username TEXT PRIMARY KEY, email TEXT, name TEXT, password TEXT, google_id TEXT, profile_picture TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS sessions 
-                 (username TEXT PRIMARY KEY, session_data BLOB)''')
+                 (username TEXT PRIMARY KEY, session_data BYTEA)''')
     conn.commit()
     conn.close()
 
@@ -64,13 +75,15 @@ init_db()
 def add_user(username: str, email: str, name: str, password: str = None, google_id: str = None, profile_picture: str = None):
     """Add a new user to the database with a hashed password, Google ID, and profile picture."""
     hashed_password = None if password is None else bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-    conn = sqlite3.connect('datatoy_users.db')
+    conn = get_db_connection()
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO users (username, email, name, password, google_id, profile_picture) VALUES (?, ?, ?, ?, ?, ?)", 
-                  (username, email, name, hashed_password, google_id, profile_picture))
+        c.execute(
+            "INSERT INTO users (username, email, name, password, google_id, profile_picture) VALUES (%s, %s, %s, %s, %s, %s)",
+            (username, email, name, hashed_password, google_id, profile_picture)
+        )
         conn.commit()
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
         conn.close()
         return False  # Username already exists
     conn.close()
@@ -78,9 +91,9 @@ def add_user(username: str, email: str, name: str, password: str = None, google_
 
 def verify_user(username: str, password: str) -> bool:
     """Verify user credentials."""
-    conn = sqlite3.connect('datatoy_users.db')
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT password FROM users WHERE username = ?", (username,))
+    c.execute("SELECT password FROM users WHERE username = %s", (username,))
     result = c.fetchone()
     conn.close()
     if result and result[0]:
@@ -90,9 +103,9 @@ def verify_user(username: str, password: str) -> bool:
 
 def get_user_by_google_id(google_id: str):
     """Get user by Google ID."""
-    conn = sqlite3.connect('datatoy_users.db')
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT username, email, name, profile_picture FROM users WHERE google_id = ?", (google_id,))
+    c.execute("SELECT username, email, name, profile_picture FROM users WHERE google_id = %s", (google_id,))
     result = c.fetchone()
     conn.close()
     return result
@@ -116,17 +129,17 @@ def save_session(username):
         'dashboard_filters': st.session_state.get('dashboard_filters')
     }
     session_blob = pickle.dumps(session_data)
-    conn = sqlite3.connect('datatoy_users.db')
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO sessions (username, session_data) VALUES (?, ?)", 
-              (username, session_blob))
+    c.execute("INSERT INTO sessions (username, session_data) VALUES (%s, %s) ON CONFLICT (username) DO UPDATE SET session_data = %s",
+              (username, session_blob, session_blob))
     conn.commit()
     conn.close()
 
 def load_session(username):
-    conn = sqlite3.connect('datatoy_users.db')
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT session_data FROM sessions WHERE username = ?", (username,))
+    c.execute("SELECT session_data FROM sessions WHERE username = %s", (username,))
     result = c.fetchone()
     conn.close()
     if result:
