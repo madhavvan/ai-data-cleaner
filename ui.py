@@ -12,8 +12,9 @@ from data_utils import (
     generate_synthetic_data, analyze_time_series
 )
 from predictive import render_predictive_page as render_predictive_page_external
-import pyarrow.parquet as pq
+import pyarrow.parquet as pq  # For Parquet file support
 
+# Cache expensive operations
 @st.cache_data
 def get_cached_suggestions(df: pd.DataFrame) -> List[Tuple[str, str]]:
     return get_cleaning_suggestions(df)
@@ -94,7 +95,7 @@ def render_upload_page() -> None:
     if uploaded_file:
         try:
             with st.spinner("Loading dataset..."):
-                if uploaded_file.size > 50 * 1024 * 1024:
+                if uploaded_file.size > 50 * 1024 * 1024:  # 50MB
                     st.warning("File size exceeds 50MB. Using chunked processing.")
                     if uploaded_file.name.endswith('.csv'):
                         chunks = pd.read_csv(uploaded_file, chunksize=10000)
@@ -174,7 +175,7 @@ def render_upload_page() -> None:
                 st.success("Dataset uploaded successfully!")
                 st.session_state.progress["Upload"] = "Done"
         except Exception as e:
-            st.error(f"Error loading file: {str(e)}")
+            st.error(f"Error loading file: {str(e)}. Please ensure the file is a valid CSV, Excel, JSON, or Parquet file.")
             st.session_state.progress["Upload"] = "Failed"
 
 def render_clean_page() -> None:
