@@ -850,14 +850,17 @@ st.write(f"Predicted {target_col}: {{prediction}}")
         st.error(f"Failed to generate ML app: {str(e)}")
         return f"Error: Failed to generate ML app - {str(e)}"
 
-@st.cache_data
-def chat_with_gpt(df: pd.DataFrame, message: str) -> str:
+
+
+#  @st.cache_data from chat_with_gpt
+def chat_with_gpt(df: pd.DataFrame, message: str, max_tokens: int = 100) -> str:
     """
     Chat with GPT about the dataset, with identity response for relevant questions.
 
     Args:
         df (pd.DataFrame): Input DataFrame.
         message (str): User message.
+        max_tokens (int): Maximum tokens for the response.
 
     Returns:
         str: Response from GPT.
@@ -875,12 +878,12 @@ def chat_with_gpt(df: pd.DataFrame, message: str) -> str:
     
     identity_keywords = ["who are you", "what are you", "who created you", "what's your name"]
     if any(keyword in message.lower() for keyword in identity_keywords):
-        return "I’m Madhavvan’s personal training assistant, built for data analysis. How can I assist you today?"
+        return "I’m your data assistant, built for data analysis. How can I assist you today?"
     
     try:
         analysis = analyze_dataset(df)
         prompt = """
-        You are Madhavvan's personal training assistant, an AI built for data analysis. Respond to this user message based on the dataset analysis:
+        You are customer's data assistant, an AI built for data analysis. Respond to this user message based on the dataset analysis:
         - Analysis: {analysis}
         - Dataset preview (first 10 rows): {preview}
         User message: "{message}"
@@ -895,7 +898,7 @@ def chat_with_gpt(df: pd.DataFrame, message: str) -> str:
             client.chat.completions.create,
             model="gpt-4o",
             messages=[{"role": "user", "content": formatted_prompt}],
-            max_tokens=300
+            max_tokens=max_tokens
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
