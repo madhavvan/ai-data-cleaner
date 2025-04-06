@@ -3,6 +3,18 @@ import streamlit.components.v1 as components
 import psycopg2
 from psycopg2 import sql
 import uuid  # For generating session tokens
+import logging
+
+# Set up logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()  # This logs to console; remove in production if not needed
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Set page configuration as the first command
 st.set_page_config(page_title="Data Toy", layout="wide", initial_sidebar_state="expanded")
@@ -64,12 +76,14 @@ def get_db_connection():
         )
     except Exception as e:
         st.error(f"Failed to connect to database: {str(e)}")
+        logger.error(f"Failed to connect to database: {str(e)}")
         return None
 
 def init_db():
     conn = get_db_connection()
     if conn is None:
         st.error("Failed to initialize database. Please check your database connection settings.")
+        logger.error("Failed to initialize database due to connection failure")
         return
     c = conn.cursor()
     # Create users table
@@ -85,12 +99,12 @@ def init_db():
         if not session_token_exists:
             # Add session_token column to existing sessions table
             c.execute("ALTER TABLE sessions ADD COLUMN session_token TEXT")
-            st.write("Debug: Added session_token column to sessions table")
+            logger.debug("Added session_token column to sessions table")
     else:
         # Create sessions table with session_token column
         c.execute('''CREATE TABLE sessions 
                      (username TEXT PRIMARY KEY, session_token TEXT, session_data BYTEA)''')
-        st.write("Debug: Created sessions table with session_token column")
+        logger.debug("Created sessions table with session_token column")
     conn.commit()
     conn.close()
 
@@ -99,20 +113,20 @@ init_db()
 
 # Restore authentication state on app startup using session token
 def restore_session():
-    st.write("Debug: Starting restore_session")
+    logger.debug("Starting restore_session")
     # Check for session token in query parameters
     session_token = st.query_params.get('session_token', None)
-    st.write(f"Debug: Session token from query params: {session_token}")
+    logger.debug(f"Session token from query params: {session_token}")
     if session_token:
         conn = get_db_connection()
         if conn is None:
-            st.write("Debug: Failed to connect to database in restore_session")
+            logger.debug("Failed to connect to database in restore_session")
             return
         c = conn.cursor()
         try:
             c.execute("SELECT username, session_data FROM sessions WHERE session_token = %s", (session_token,))
             result = c.fetchone()
-            st.write(f"Debug: Database query result: {result}")
+            logger.debug(f"Database query result: {result}")
             if result:
                 username, session_data = result
                 session_data = pickle.loads(session_data)
@@ -126,24 +140,24 @@ def restore_session():
                 for key, value in session_data.items():
                     if key not in ['authenticated', 'username', 'user_info', 'session_token', 'page']:
                         st.session_state[key] = value
-                st.write(f"Debug: Session restored for user {username}, authenticated: {st.session_state.authenticated}, page: {st.session_state.page}")
+                logger.debug(f"Session restored for user {username}, authenticated: {st.session_state.authenticated}, page: {st.session_state.page}")
             else:
-                st.write("Debug: No session found for the given session token")
+                logger.debug("No session found for the given session token")
         except Exception as e:
-            st.write(f"Debug: Error in restore_session: {str(e)}")
+            logger.debug(f"Error in restore_session: {str(e)}")
         finally:
             conn.close()
     else:
-        st.write("Debug: No session token found in query parameters")
+        logger.debug("No session token found in query parameters")
 
 # Save authentication state to the database with session token
 def save_auth_state():
     if st.session_state.username:
-        st.write("Debug: Starting save_auth_state")
+        logger.debug("Starting save_auth_state")
         # Generate a session token if it doesn't exist
         if not st.session_state.session_token:
             st.session_state.session_token = str(uuid.uuid4())
-            st.write(f"Debug: Generated new session token: {st.session_state.session_token}")
+            logger.debug(f"Generated new session token: {st.session_state.session_token}")
         # Add session token to query parameters
         st.query_params['session_token'] = st.session_state.session_token
 
@@ -171,16 +185,16 @@ def save_auth_state():
         session_blob = pickle.dumps(session_data)
         conn = get_db_connection()
         if conn is None:
-            st.write("Debug: Failed to connect to database in save_auth_state")
+            logger.debug("Failed to connect to database in save_auth_state")
             return
         c = conn.cursor()
         try:
             c.execute("INSERT INTO sessions (username, session_token, session_data) VALUES (%s, %s, %s) ON CONFLICT (username) DO UPDATE SET session_token = %s, session_data = %s",
                       (st.session_state.username, st.session_state.session_token, session_blob, st.session_state.session_token, session_blob))
             conn.commit()
-            st.write("Debug: Session state saved successfully")
+            logger.debug("Session state saved successfully")
         except Exception as e:
-            st.write(f"Debug: Error in save_auth_state: {str(e)}")
+            logger.debug(f"Error in save_auth_state: {str(e)}")
         finally:
             conn.close()
 

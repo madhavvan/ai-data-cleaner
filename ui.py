@@ -13,6 +13,18 @@ from data_utils import (
 )
 from predictive import render_predictive_page as render_predictive_page_external
 import pyarrow.parquet as pq  # For Parquet file support
+import logging
+
+# Set up logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('ui.log'),
+        logging.StreamHandler()  # This logs to console; remove in production if not needed
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Cache expensive operations
 @st.cache_data
@@ -93,7 +105,7 @@ def render_upload_page() -> None:
 
         # Add "Delete Dataset" button
         if st.button("Delete Dataset", help="Remove the uploaded dataset and reset all cleaning operations", key="delete_dataset_button"):
-            st.write("Debug: Delete Dataset button clicked")
+            logger.debug("Delete Dataset button clicked")
             st.session_state.df = None
             st.session_state.cleaned_df = None
             st.session_state.logs = []
@@ -111,18 +123,21 @@ def render_upload_page() -> None:
             # Save session state before rerunning
             from app import save_auth_state
             save_auth_state()
+            # Clear the file uploader state
+            if 'file_uploader' in st.session_state:
+                del st.session_state['file_uploader']
             st.rerun()
 
         # Add "Start Cleaning" button
         if st.button("Start Cleaning", help="Proceed to the Cleaning page to clean your dataset", key="start_cleaning_button"):
-            st.write("Debug: Start Cleaning button clicked")
+            logger.debug("Start Cleaning button clicked")
             st.session_state.page = "Clean"
             # Save session state before rerunning
             from app import save_auth_state
             save_auth_state()
             st.rerun()
 
-    uploaded_file = st.file_uploader("Choose a file (CSV, Excel, JSON, or Parquet)", type=["csv", "xlsx", "json", "parquet"], help="Upload a dataset file to begin.")
+    uploaded_file = st.file_uploader("Choose a file (CSV, Excel, JSON, or Parquet)", type=["csv", "xlsx", "json", "parquet"], help="Upload a dataset file to begin.", key="file_uploader")
     if uploaded_file:
         try:
             with st.spinner("Loading dataset..."):
@@ -246,7 +261,7 @@ def render_clean_page() -> None:
     st.subheader("Smart Workflow Automation")
     st.markdown('<span title="Run an AI-suggested cleaning workflow automatically">ℹ️</span>', unsafe_allow_html=True)
     if st.button("Run Smart Workflow", key="run_smart_workflow_button"):
-        st.write("Debug: Run Smart Workflow button clicked")
+        logger.debug("Run Smart Workflow button clicked")
         with st.spinner("Generating and executing workflow..."):
             try:
                 workflow = suggest_workflow(df[available_columns])
@@ -363,7 +378,7 @@ def render_clean_page() -> None:
                     help="Choose which columns to apply the replacement to",
                     key="replace_scope"
                 )
-        
+                      
         with encode_container:
             with st.expander("Convert Categorical to Numerical", expanded=False):
                 st.markdown('<span title="Convert categorical columns to numerical values">ℹ️</span>', unsafe_allow_html=True)
