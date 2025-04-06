@@ -1,7 +1,7 @@
 import streamlit as st
-import streamlit.components.v1 as components
+import streamlit.components.v1 as components  # Import components for HTML injection
 
-# Set page configuration
+# Set page configuration as the first command
 st.set_page_config(page_title="Data Toy", layout="wide", initial_sidebar_state="expanded")
 
 import os
@@ -24,7 +24,7 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 SCOPES = ["openid", "email", "profile"]
 
-# Initialize session state
+# Initialize session state at the top
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 if 'theme' not in st.session_state:
@@ -45,7 +45,7 @@ if 'progress' not in st.session_state:
         "Share": "Not Started"
     }
 if 'user_info' not in st.session_state:
-    st.session_state.user_info = None
+    st.session_state.user_info = None  # To store Google user info (e.g., profile picture)
 
 # Database Setup for Users and Sessions
 def init_db():
@@ -58,9 +58,11 @@ def init_db():
     conn.commit()
     conn.close()
 
+# Call init_db at the start of the app to ensure the database is initialized
 init_db()
 
 def add_user(username: str, email: str, name: str, password: str = None, google_id: str = None, profile_picture: str = None):
+    """Add a new user to the database with a hashed password, Google ID, and profile picture."""
     hashed_password = None if password is None else bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
     conn = sqlite3.connect('datatoy_users.db')
     c = conn.cursor()
@@ -70,11 +72,12 @@ def add_user(username: str, email: str, name: str, password: str = None, google_
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
-        return False
+        return False  # Username already exists
     conn.close()
     return True
 
 def verify_user(username: str, password: str) -> bool:
+    """Verify user credentials."""
     conn = sqlite3.connect('datatoy_users.db')
     c = conn.cursor()
     c.execute("SELECT password FROM users WHERE username = ?", (username,))
@@ -86,6 +89,7 @@ def verify_user(username: str, password: str) -> bool:
     return False
 
 def get_user_by_google_id(google_id: str):
+    """Get user by Google ID."""
     conn = sqlite3.connect('datatoy_users.db')
     c = conn.cursor()
     c.execute("SELECT username, email, name, profile_picture FROM users WHERE google_id = ?", (google_id,))
@@ -109,10 +113,7 @@ def save_session(username):
         'dropped_columns': st.session_state.get('dropped_columns'),
         'progress': st.session_state.get('progress'),
         'dashboard_charts': st.session_state.get('dashboard_charts'),
-        'dashboard_filters': st.session_state.get('dashboard_filters'),
-        'authenticated': st.session_state.authenticated,
-        'username': st.session_state.username,
-        'user_info': st.session_state.user_info
+        'dashboard_filters': st.session_state.get('dashboard_filters')
     }
     session_blob = pickle.dumps(session_data)
     conn = sqlite3.connect('datatoy_users.db')
@@ -135,6 +136,12 @@ def load_session(username):
 
 # Load CSS with theme support
 def load_css(theme: str = "dark") -> None:
+    """
+    Load CSS styles and apply the appropriate theme class.
+
+    Args:
+        theme (str): Theme to apply ("dark" or "light").
+    """
     css = """
     body {
         font-family: 'Roboto', sans-serif !important;
@@ -367,6 +374,7 @@ def load_css(theme: str = "dark") -> None:
         text-decoration: none !important;
     }
     """
+    # Use components.html to inject the CSS and set the body class immediately
     components.html(
         f"""
         <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
@@ -376,6 +384,7 @@ def load_css(theme: str = "dark") -> None:
         <script>
             document.body.className = "{theme}-theme";
             console.log("Applied body class:", document.body.className);
+            // Debugging: Apply a test style to confirm CSS injection
             document.body.style.backgroundColor = "{ '#1C2526' if theme == 'dark' else '#F0F4F8' }";
         </script>
         """,
@@ -384,6 +393,12 @@ def load_css(theme: str = "dark") -> None:
 
 # Function to render a custom header without the logo
 def render_custom_header(page_title: str) -> None:
+    """
+    Render a custom header with the page title.
+
+    Args:
+        page_title (str): Title of the page.
+    """
     header = st.container()
     with header:
         st.markdown(f"<h1 style='margin-top: 20px;'>{page_title}</h1>", unsafe_allow_html=True)
@@ -402,13 +417,12 @@ def handle_google_callback():
     user_info = requests.get(GOOGLE_USERINFO_URL, headers={'Authorization': f"Bearer {token['access_token']}"}).json()
     return user_info
 
-# Restore authentication state on page refresh
-if st.session_state.username:
-    load_session(st.session_state.username)
-
 # Authentication Logic
 if st.session_state.page == "Login":
+    # Load CSS for the login page
     load_css(st.session_state.theme)
+
+    # Create a centered login card with inline styles
     st.markdown(
         f"""
         <div class="login-card" style="background: {'#2A3B47' if st.session_state.theme == 'dark' else '#FFFFFF'}; border-radius: 15px; padding: 30px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); max-width: 400px; margin: 0 auto; margin-top: 100px;">
@@ -417,7 +431,13 @@ if st.session_state.page == "Login":
         unsafe_allow_html=True
     )
     
-    username = st.text_input("Username", placeholder="Enter your username", key="username_input", help="Enter your username to log in.")
+    username = st.text_input(
+        "Username",
+        placeholder="Enter your username",
+        key="username_input",
+        help="Enter your username to log in."
+    )
+    # Apply inline styles to the username input field
     st.markdown(
         f"""
         <style>
@@ -440,7 +460,14 @@ if st.session_state.page == "Login":
         unsafe_allow_html=True
     )
 
-    password = st.text_input("Password", type="password", placeholder="Enter your password", key="password_input", help="Enter your password to log in.")
+    password = st.text_input(
+        "Password",
+        type="password",
+        placeholder="Enter your password",
+        key="password_input",
+        help="Enter your password to log in."
+    )
+    # Apply inline styles to the password input field
     st.markdown(
         f"""
         <style>
@@ -463,16 +490,22 @@ if st.session_state.page == "Login":
         unsafe_allow_html=True
     )
     
-    if st.button("Login", key="login_button", help="Click to log in with your username and password."):
+    # Login button with inline styles
+    if st.button(
+        "Login",
+        key="login_button",
+        help="Click to log in with your username and password."
+    ):
         if verify_user(username, password):
             st.session_state.authenticated = True
             st.session_state.username = username
             st.session_state.page = "Upload"
-            st.session_state.user_info = None
-            save_session(username)
+            st.session_state.user_info = None  # Reset Google user info
+            load_session(username)
             st.rerun()
         else:
             st.error("Incorrect username or password")
+    # Apply inline styles to the login button
     st.markdown(
         f"""
         <style>
@@ -498,6 +531,7 @@ if st.session_state.page == "Login":
         unsafe_allow_html=True
     )
 
+    # Google Login Button with Official Icon and inline styles
     auth_url = get_google_auth_url()
     st.markdown(
         f"""
@@ -518,6 +552,7 @@ if st.session_state.page == "Login":
         if user:
             username, email, name, profile_picture = user
         else:
+            # Create new user with Google info
             username = user_info['email'].split('@')[0]
             email = user_info['email']
             name = user_info['name']
@@ -525,15 +560,21 @@ if st.session_state.page == "Login":
             add_user(username, email, name, google_id=google_id, profile_picture=profile_picture)
         st.session_state.authenticated = True
         st.session_state.username = username
-        st.session_state.user_info = user_info
+        st.session_state.user_info = user_info  # Store Google user info for profile picture
         st.session_state.page = "Upload"
-        save_session(username)
-        st.query_params.clear()
+        load_session(username)
+        st.query_params.clear()  # Clear query params
         st.rerun()
 
-    if st.button("Sign Up", key="signup_button", help="Click to create a new account."):
+    # Sign Up button with inline styles
+    if st.button(
+        "Sign Up",
+        key="signup_button",
+        help="Click to create a new account."
+    ):
         st.session_state.page = "Sign Up"
         st.rerun()
+    # Apply inline styles to the sign-up button
     st.markdown(
         f"""
         <style>
@@ -562,7 +603,10 @@ if st.session_state.page == "Login":
     st.markdown('</div>', unsafe_allow_html=True)
 
 elif st.session_state.page == "Sign Up":
+    # Load CSS for the sign-up page
     load_css(st.session_state.theme)
+
+    # Create a centered sign-up card with inline styles
     st.markdown(
         f"""
         <div class="login-card" style="background: {'#2A3B47' if st.session_state.theme == 'dark' else '#FFFFFF'}; border-radius: 15px; padding: 30px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); max-width: 400px; margin: 0 auto; margin-top: 100px;">
@@ -571,7 +615,12 @@ elif st.session_state.page == "Sign Up":
         unsafe_allow_html=True
     )
     
-    new_username = st.text_input("New Username", placeholder="Choose a username", key="new_username_input", help="Choose a unique username for your account.")
+    new_username = st.text_input(
+        "New Username",
+        placeholder="Choose a username",
+        key="new_username_input",
+        help="Choose a unique username for your account."
+    )
     st.markdown(
         f"""
         <style>
@@ -594,7 +643,12 @@ elif st.session_state.page == "Sign Up":
         unsafe_allow_html=True
     )
 
-    new_email = st.text_input("Email", placeholder="Enter your email", key="new_email_input", help="Enter your email address.")
+    new_email = st.text_input(
+        "Email",
+        placeholder="Enter your email",
+        key="new_email_input",
+        help="Enter your email address."
+    )
     st.markdown(
         f"""
         <style>
@@ -617,7 +671,12 @@ elif st.session_state.page == "Sign Up":
         unsafe_allow_html=True
     )
 
-    new_name = st.text_input("Name", placeholder="Enter your name", key="new_name_input", help="Enter your full name.")
+    new_name = st.text_input(
+        "Name",
+        placeholder="Enter your name",
+        key="new_name_input",
+        help="Enter your full name."
+    )
     st.markdown(
         f"""
         <style>
@@ -640,7 +699,13 @@ elif st.session_state.page == "Sign Up":
         unsafe_allow_html=True
     )
 
-    new_password = st.text_input("New Password", type="password", placeholder="Choose a password", key="new_password_input", help="Choose a secure password.")
+    new_password = st.text_input(
+        "New Password",
+        type="password",
+        placeholder="Choose a password",
+        key="new_password_input",
+        help="Choose a secure password."
+    )
     st.markdown(
         f"""
         <style>
@@ -663,7 +728,11 @@ elif st.session_state.page == "Sign Up":
         unsafe_allow_html=True
     )
     
-    if st.button("Register", key="register_button", help="Click to register your account."):
+    if st.button(
+        "Register",
+        key="register_button",
+        help="Click to register your account."
+    ):
         if add_user(new_username, new_email, new_name, new_password):
             st.success("Registration successful! Please log in.")
             st.session_state.page = "Login"
@@ -695,7 +764,11 @@ elif st.session_state.page == "Sign Up":
         unsafe_allow_html=True
     )
     
-    if st.button("Back to Login", key="back_to_login_button", help="Click to return to the login page."):
+    if st.button(
+        "Back to Login",
+        key="back_to_login_button",
+        help="Click to return to the login page."
+    ):
         st.session_state.page = "Login"
         st.rerun()
     st.markdown(
@@ -727,14 +800,27 @@ elif st.session_state.page == "Sign Up":
 
 # Main App Logic (after authentication)
 if st.session_state.authenticated:
+    # Load CSS with selected theme
     load_css(st.session_state.theme)
+
+    # Sidebar setup
     def setup_sidebar(logo_path: str = "images/datatoy_logo.png") -> Optional[str]:
+        """
+        Set up the sidebar with logo, navigation, AI assistant, theme toggle, and additional links.
+
+        Args:
+            logo_path (str): Path to the logo image.
+
+        Returns:
+            Optional[str]: Selected page or None if no page is selected.
+        """
         try:
             st.sidebar.image(logo_path, use_column_width=True)
         except FileNotFoundError:
             st.sidebar.markdown("**Data Toy** (Logo not found)", unsafe_allow_html=True)
             st.sidebar.warning(f"Logo file '{logo_path}' not found. Please add it to the project directory.")
 
+        # Display Google Profile Picture and Name if available
         if st.session_state.user_info and 'picture' in st.session_state.user_info:
             st.sidebar.image(st.session_state.user_info['picture'], width=100, caption=f"Welcome, {st.session_state.user_info['name']}")
         else:
@@ -745,17 +831,17 @@ if st.session_state.authenticated:
 
         page = st.sidebar.radio("Go to", ["Upload", "Clean", "Insights", "Visualize", "Predictive", "Share"])
 
+        # Theme Toggle
         st.sidebar.subheader("Theme")
         theme_choice = st.sidebar.selectbox("Select Theme", ["Dark", "Light"], index=0 if st.session_state.theme == "dark" else 1)
         if theme_choice == "Dark" and st.session_state.theme != "dark":
             st.session_state.theme = "dark"
-            save_session(st.session_state.username)
             st.rerun()
         elif theme_choice == "Light" and st.session_state.theme != "light":
             st.session_state.theme = "light"
-            save_session(st.session_state.username)
             st.rerun()
 
+        # Progress Tracker
         st.sidebar.subheader("Your Progress")
         progress_text = ""
         for step, status in st.session_state.progress.items():
@@ -781,7 +867,6 @@ if st.session_state.authenticated:
                 with st.spinner("Processing your query..."):
                     response = chat_with_gpt(df, chat_input)
                 st.session_state.chat_history.append({"role": "assistant", "content": response})
-                save_session(st.session_state.username)
                 st.rerun()
             else:
                 st.sidebar.warning("Please upload a dataset first to use the AI assistant.")
@@ -798,18 +883,23 @@ if st.session_state.authenticated:
         if is_dev_mode:
             st.sidebar.info("Running in DEV_MODE: Unlimited AI suggestions enabled.")
 
+        # Logout Button
         if st.sidebar.button("Logout"):
             st.session_state.authenticated = False
             st.session_state.username = None
             st.session_state.user_info = None
             st.session_state.page = "Login"
-            save_session(st.session_state.username if st.session_state.username else "default_user")
             st.rerun()
 
         return page
 
+    # Main application logic
     def main() -> None:
+        """
+        Main function to render the Data Toy application.
+        """
         page = setup_sidebar()
+
         if not page:
             st.error("No page selected. Please select a page from the sidebar.")
             return
@@ -850,6 +940,7 @@ if st.session_state.authenticated:
             st.error(f"An error occurred while rendering the {page} page: {str(e)}. Please try again or contact support.")
             st.session_state.progress[page] = "Failed"
 
+        # Save session on every interaction
         save_session(st.session_state.username)
 
     if __name__ == "__main__":
