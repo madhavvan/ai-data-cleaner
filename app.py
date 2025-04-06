@@ -58,6 +58,9 @@ def init_db():
     conn.commit()
     conn.close()
 
+# Call init_db at the start of the app to ensure the database is initialized
+init_db()
+
 def add_user(username: str, email: str, name: str, password: str = None, google_id: str = None, profile_picture: str = None):
     """Add a new user to the database with a hashed password, Google ID, and profile picture."""
     hashed_password = None if password is None else bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
@@ -875,9 +878,6 @@ if st.session_state.authenticated:
         st.sidebar.markdown("Connect with others! [Join our Discord](https://discord.gg/your-invite-link)")
         st.sidebar.markdown("**Upgrade to Premium**")
         st.sidebar.markdown("Unlock advanced features for $5/month! [Upgrade Now](https://stripe.com/your-checkout-link)")
-        # st.sidebar.markdown("**User Testimonials**")
-        # st.sidebar.markdown("- 'This app replaced Excel for me!' - @DataNerd")
-        # st.sidebar.markdown("- 'Mind-blowing AI features!' - @MLFan")
 
         is_dev_mode = os.getenv("DEV_MODE") == "true"
         if is_dev_mode:
