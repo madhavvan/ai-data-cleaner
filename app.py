@@ -69,13 +69,28 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     if conn is None:
+        st.error("Failed to initialize database. Please check your database connection settings.")
         return
     c = conn.cursor()
-    # Add session_token column to sessions table
+    # Create users table
     c.execute('''CREATE TABLE IF NOT EXISTS users 
                  (username TEXT PRIMARY KEY, email TEXT, name TEXT, password BYTEA, google_id TEXT, profile_picture TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS sessions 
-                 (username TEXT PRIMARY KEY, session_token TEXT, session_data BYTEA)''')
+    # Check if sessions table exists and has the correct schema
+    c.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'sessions')")
+    table_exists = c.fetchone()[0]
+    if table_exists:
+        # Check if session_token column exists
+        c.execute("SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'sessions' AND column_name = 'session_token')")
+        session_token_exists = c.fetchone()[0]
+        if not session_token_exists:
+            # Add session_token column to existing sessions table
+            c.execute("ALTER TABLE sessions ADD COLUMN session_token TEXT")
+            st.write("Debug: Added session_token column to sessions table")
+    else:
+        # Create sessions table with session_token column
+        c.execute('''CREATE TABLE sessions 
+                     (username TEXT PRIMARY KEY, session_token TEXT, session_data BYTEA)''')
+        st.write("Debug: Created sessions table with session_token column")
     conn.commit()
     conn.close()
 
