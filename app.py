@@ -62,7 +62,6 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     c = conn.cursor()
-    # Updated password column to BYTEA
     c.execute('''CREATE TABLE IF NOT EXISTS users 
                  (username TEXT PRIMARY KEY, email TEXT, name TEXT, password BYTEA, google_id TEXT, profile_picture TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS sessions 
@@ -72,6 +71,60 @@ def init_db():
 
 # Call init_db at the start of the app to ensure the database is initialized
 init_db()
+
+# Restore authentication state on app startup
+def restore_session():
+    if st.session_state.username:
+        # Check if the user has an active session in the database
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT session_data FROM sessions WHERE username = %s", (st.session_state.username,))
+        result = c.fetchone()
+        conn.close()
+        if result:
+            session_data = pickle.loads(result[0])
+            # Restore authentication state
+            st.session_state.authenticated = session_data.get('authenticated', False)
+            st.session_state.username = session_data.get('username', st.session_state.username)
+            st.session_state.user_info = session_data.get('user_info', None)
+            # Restore other session state variables
+            for key, value in session_data.items():
+                if key not in ['authenticated', 'username', 'user_info']:
+                    st.session_state[key] = value
+
+# Save authentication state to the database
+def save_auth_state():
+    if st.session_state.username:
+        session_data = {
+            'authenticated': st.session_state.authenticated,
+            'username': st.session_state.username,
+            'user_info': st.session_state.user_info,
+            'df': st.session_state.get('df'),
+            'cleaned_df': st.session_state.get('cleaned_df'),
+            'logs': st.session_state.get('logs'),
+            'suggestions': st.session_state.get('suggestions'),
+            'previous_states': st.session_state.get('previous_states'),
+            'redo_states': st.session_state.get('redo_states'),
+            'chat_history': st.session_state.get('chat_history'),
+            'cleaning_history': st.session_state.get('cleaning_history'),
+            'cleaning_templates': st.session_state.get('cleaning_templates'),
+            'is_premium': st.session_state.get('is_premium'),
+            'ai_suggestions_used': st.session_state.get('ai_suggestions_used'),
+            'dropped_columns': st.session_state.get('dropped_columns'),
+            'progress': st.session_state.get('progress'),
+            'dashboard_charts': st.session_state.get('dashboard_charts'),
+            'dashboard_filters': st.session_state.get('dashboard_filters')
+        }
+        session_blob = pickle.dumps(session_data)
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("INSERT INTO sessions (username, session_data) VALUES (%s, %s) ON CONFLICT (username) DO UPDATE SET session_data = %s",
+                  (st.session_state.username, session_blob, session_blob))
+        conn.commit()
+        conn.close()
+
+# Restore session on app startup
+restore_session()
 
 def add_user(username: str, email: str, name: str, password: str = None, google_id: str = None, profile_picture: str = None):
     """Add a new user to the database with a hashed password, Google ID, and profile picture."""
@@ -121,30 +174,8 @@ def get_user_by_google_id(google_id: str):
     return result
 
 def save_session(username):
-    session_data = {
-        'df': st.session_state.get('df'),
-        'cleaned_df': st.session_state.get('cleaned_df'),
-        'logs': st.session_state.get('logs'),
-        'suggestions': st.session_state.get('suggestions'),
-        'previous_states': st.session_state.get('previous_states'),
-        'redo_states': st.session_state.get('redo_states'),
-        'chat_history': st.session_state.get('chat_history'),
-        'cleaning_history': st.session_state.get('cleaning_history'),
-        'cleaning_templates': st.session_state.get('cleaning_templates'),
-        'is_premium': st.session_state.get('is_premium'),
-        'ai_suggestions_used': st.session_state.get('ai_suggestions_used'),
-        'dropped_columns': st.session_state.get('dropped_columns'),
-        'progress': st.session_state.get('progress'),
-        'dashboard_charts': st.session_state.get('dashboard_charts'),
-        'dashboard_filters': st.session_state.get('dashboard_filters')
-    }
-    session_blob = pickle.dumps(session_data)
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("INSERT INTO sessions (username, session_data) VALUES (%s, %s) ON CONFLICT (username) DO UPDATE SET session_data = %s",
-              (username, session_blob, session_blob))
-    conn.commit()
-    conn.close()
+    # Save the full session state, including authentication
+    save_auth_state()
 
 def load_session(username):
     conn = get_db_connection()
@@ -155,7 +186,8 @@ def load_session(username):
     if result:
         session_data = pickle.loads(result[0])
         for key, value in session_data.items():
-            st.session_state[key] = value
+            if key not in ['authenticated', 'username', 'user_info']:  # These are handled by restore_session
+                st.session_state[key] = value
 
 # Load CSS with theme support
 def load_css(theme: str = "dark") -> None:
@@ -532,6 +564,7 @@ if st.session_state.page == "Login":
             st.session_state.page = "Upload"
             st.session_state.user_info = None  # Reset Google user info
             load_session(username)
+            save_auth_state()  # Save authentication state
             st.rerun()
         else:
             st.error("Incorrect username or password")
@@ -585,6 +618,7 @@ if st.session_state.page == "Login":
             if user:
                 username, email, name, profile_picture = user
             else:
+                # Create new user with Google info
                 username = user_info['email'].split('@')[0]
                 email = user_info['email']
                 name = user_info['name']
@@ -592,10 +626,11 @@ if st.session_state.page == "Login":
                 add_user(username, email, name, google_id=google_id, profile_picture=profile_picture)
             st.session_state.authenticated = True
             st.session_state.username = username
-            st.session_state.user_info = user_info
+            st.session_state.user_info = user_info  # Store Google user info for profile picture
             st.session_state.page = "Upload"
             load_session(username)
-            st.query_params.clear()
+            save_auth_state()  # Save authentication state
+            st.query_params.clear()  # Clear query params
             st.rerun()
 
     # Sign Up button with inline styles
@@ -899,6 +934,7 @@ if st.session_state.authenticated:
                 with st.spinner("Processing your query..."):
                     response = chat_with_gpt(df, chat_input, max_tokens=100)
                 st.session_state.chat_history.append({"role": "assistant", "content": response})
+                save_auth_state()  # Save session state after chat interaction
                 st.rerun()
             else:
                 st.sidebar.warning("Please upload a dataset first to use the AI assistant.")
@@ -921,6 +957,12 @@ if st.session_state.authenticated:
             st.session_state.username = None
             st.session_state.user_info = None
             st.session_state.page = "Login"
+            # Clear session data from the database
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("DELETE FROM sessions WHERE username = %s", (username,))
+            conn.commit()
+            conn.close()
             st.rerun()
 
         return page

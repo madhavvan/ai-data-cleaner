@@ -91,6 +91,29 @@ def render_upload_page() -> None:
         st.info("This is the original dataset. Cleaning operations are applied to a working copy.")
         st.warning("Uploading a new file will overwrite the current dataset and reset all cleaning operations. Proceed with caution!")
 
+        # Add "Delete Dataset" button
+        if st.button("Delete Dataset", help="Remove the uploaded dataset and reset all cleaning operations"):
+            st.session_state.df = None
+            st.session_state.cleaned_df = None
+            st.session_state.logs = []
+            st.session_state.suggestions = []
+            st.session_state.previous_states = []
+            st.session_state.redo_states = []
+            st.session_state.chat_history = []
+            st.session_state.cleaning_history = []
+            st.session_state.cleaning_templates = {}
+            st.session_state.ai_suggestions_used = 0
+            st.session_state.dropped_columns = []
+            st.session_state.progress["Upload"] = "Not Started"
+            st.session_state.progress["Clean"] = "Not Started"
+            st.success("Dataset deleted successfully!")
+            st.rerun()
+
+        # Add "Start Cleaning" button
+        if st.button("Start Cleaning", help="Proceed to the Cleaning page to clean your dataset"):
+            st.session_state.page = "Clean"
+            st.rerun()
+
     uploaded_file = st.file_uploader("Choose a file (CSV, Excel, JSON, or Parquet)", type=["csv", "xlsx", "json", "parquet"], help="Upload a dataset file to begin.")
     if uploaded_file:
         try:
@@ -366,13 +389,14 @@ def render_clean_page() -> None:
                 st.markdown('<span title="AI-driven suggestions to automate data cleaning">ℹ️</span>', unsafe_allow_html=True)
                 for idx, (suggestion, explanation) in enumerate(st.session_state.suggestions):
                     if "Based on the provided dataset analysis" in suggestion:
-                        st.markdown(f"**{suggestion}** - {explanation}")
+                        # Display general analysis without checkbox, in normal text
+                        st.markdown(f"{suggestion} - {explanation}")
                     else:
-                        # Use unique key by combining suggestion with index
+                        # Use unique key by combining suggestion with index, display in normal text
                         if st.checkbox(f"{suggestion}", key=f"suggestion_{suggestion}_{idx}"):
                             selected_suggestions.append((suggestion, explanation))
                             st.session_state.ai_suggestions_used += 1
-                            st.markdown(f"**Explanation:** {explanation}")
+                            st.markdown(f"Explanation: {explanation}")
                             if "Handle special characters" in suggestion:
                                 options["special_chars"] = st.radio(
                                     "Action for special characters", 

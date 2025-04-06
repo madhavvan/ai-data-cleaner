@@ -278,7 +278,7 @@ def calculate_health_score(df: pd.DataFrame) -> float:
 @st.cache_data
 def get_cleaning_suggestions(df: pd.DataFrame) -> List[Tuple[str, str]]:
     """
-    Generate AI-driven cleaning suggestions with explanations using GPT-4o, including data type corrections.
+    Generate AI-driven cleaning suggestions with explanations using GPT-4o.
 
     Args:
         df (pd.DataFrame): Input DataFrame.
@@ -299,10 +299,9 @@ def get_cleaning_suggestions(df: pd.DataFrame) -> List[Tuple[str, str]]:
 
     try:
         analysis = analyze_dataset(df)
-        # Enhanced prompt with data type correction suggestions
-        prompt = """
+        prompt = f"""
         You are an expert data analyst. Based on this dataset analysis, provide specific, actionable cleaning suggestions with brief explanations:
-        - Dataset preview (first 10 rows): {preview}
+        - Dataset preview (first 10 rows): {df.head(10).to_string()}
         - Analysis: {analysis}
         Suggest only applicable operations with specific wording and explanations:
         1. "Replace '?' with NaN" if '?' exists - "Converts ambiguous markers to standard missing values."
@@ -313,17 +312,12 @@ def get_cleaning_suggestions(df: pd.DataFrame) -> List[Tuple[str, str]]:
         6. "Remove duplicate rows" if duplicates exist - "Ensures data uniqueness."
         7. "Handle outliers in [col]" for each numeric column with outliers - "Reduces data skew."
         8. "Interpolate time series in [col]" if time series columns exist - "Fills gaps in temporal data."
-        9. "Convert column [col] to [suggested_type]" if type issues exist - "Ensures consistent data types."
         Format each suggestion as: "Suggestion - Explanation"
         """
-        formatted_prompt = prompt.format(
-            preview=df.head(10).to_string(),
-            analysis=analysis
-        )
         response = rate_limited_api_call(
             client.chat.completions.create,
             model="gpt-4o",
-            messages=[{"role": "user", "content": formatted_prompt}],
+            messages=[{"role": "user", "content": prompt}],
             max_tokens=700
         )
         suggestions = response.choices[0].message.content.strip().split("\n")
