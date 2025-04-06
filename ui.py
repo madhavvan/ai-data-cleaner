@@ -14,17 +14,15 @@ from data_utils import (
 from predictive import render_predictive_page as render_predictive_page_external
 import pyarrow.parquet as pq  # For Parquet file support
 import logging
+from logging.handlers import RotatingFileHandler
 
-# Set up logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('ui.log'),
-        logging.StreamHandler()  # This logs to console; remove in production if not needed
-    ]
-)
+# Set up logging with rotation
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)  # Change to INFO for production
+if not logger.handlers:  # Avoid adding handlers multiple times
+    handler = RotatingFileHandler('ui.log', maxBytes=5*1024*1024, backupCount=3)  # 5MB per file, keep 3 backups
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(handler)
 
 # Cache expensive operations
 @st.cache_data
@@ -137,13 +135,13 @@ def render_upload_page() -> None:
 
         # Add "Delete Dataset" button
         if st.button("Delete Dataset", help="Remove the uploaded dataset and reset all cleaning operations", key="delete_dataset_button"):
-            logger.debug("Delete Dataset button clicked")
+            logger.info("Delete Dataset button clicked")
             st.session_state.delete_dataset = True
             st.experimental_rerun()
 
         # Add "Start Cleaning" button
         if st.button("Start Cleaning", help="Proceed to the Cleaning page to clean your dataset", key="start_cleaning_button"):
-            logger.debug("Start Cleaning button clicked")
+            logger.info("Start Cleaning button clicked")
             st.session_state.navigate_to_clean = True
             st.experimental_rerun()
 
@@ -271,7 +269,7 @@ def render_clean_page() -> None:
     st.subheader("Smart Workflow Automation")
     st.markdown('<span title="Run an AI-suggested cleaning workflow automatically">ℹ️</span>', unsafe_allow_html=True)
     if st.button("Run Smart Workflow", key="run_smart_workflow_button"):
-        logger.debug("Run Smart Workflow button clicked")
+        logger.info("Run Smart Workflow button clicked")
         with st.spinner("Generating and executing workflow..."):
             try:
                 workflow = suggest_workflow(df[available_columns])
@@ -553,7 +551,7 @@ def render_clean_page() -> None:
                             st.error("Invalid replacement scope selected.")
                             return
 
-                    logger.debug("Applying cleaning operations...")
+                    logger.info("Applying cleaning operations...")
                     cleaned_df, logs = apply_cleaning_operations(
                         df, selected_suggestions, columns_to_drop, options, 
                         replace_value, replace_with if replace_with != "NaN" else "NaN", 
@@ -561,7 +559,7 @@ def render_clean_page() -> None:
                         enrich_col=enrich_col if enrich_col != "None" else None, enrich_api_key=enrich_api_key,
                         train_ml=train_ml, target_col=target_col, feature_cols=feature_cols
                     )
-                    logger.debug(f"Cleaning operations applied. Logs: {logs}")
+                    logger.info(f"Cleaning operations applied. Logs: {logs}")
 
                     for rule in custom_rules:
                         col = rule["column"]

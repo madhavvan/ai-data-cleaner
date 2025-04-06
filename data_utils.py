@@ -14,6 +14,7 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 import joblib
 from sklearn.datasets import make_classification, make_regression
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import httpx
 from typing import Dict, List, Tuple, Optional, Union
@@ -22,16 +23,13 @@ from cryptography.fernet import Fernet
 import sqlite3
 from datetime import datetime
 
-# Set up logging with a more detailed configuration
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('data_utils.log')
-    ]
-)
+# Set up logging with rotation
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)  # Change to INFO for production
+if not logger.handlers:  # Avoid adding handlers multiple times
+    handler = RotatingFileHandler('data_utils.log', maxBytes=5*1024*1024, backupCount=3)  # 5MB per file, keep 3 backups
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(handler)
 
 # Securely load OpenAI API key
 api_key = None
@@ -843,8 +841,6 @@ st.write(f"Predicted {target_col}: {{prediction}}")
         logger.error(f"Error in generate_ml_app: {str(e)}")
         st.error(f"Failed to generate ML app: {str(e)}")
         return f"Error: Failed to generate ML app - {str(e)}"
-
-
 
 #  @st.cache_data from chat_with_gpt
 def chat_with_gpt(df: pd.DataFrame, message: str, max_tokens: int = 100) -> str:

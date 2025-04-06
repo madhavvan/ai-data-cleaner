@@ -26,3 +26,6 @@ data_utils.log
 # Unnecessary files for deployment
 styles.css
 test_data_utils.py
+
+app.log
+ui.log

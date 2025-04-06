@@ -4,17 +4,15 @@ import psycopg2
 from psycopg2 import sql
 import uuid  # For generating session tokens
 import logging
+from logging.handlers import RotatingFileHandler
 
-# Set up logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('app.log'),
-        logging.StreamHandler()  # This logs to console; remove in production if not needed
-    ]
-)
+# Set up logging with rotation
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)  # Change to INFO for production
+if not logger.handlers:  # Avoid adding handlers multiple times
+    handler = RotatingFileHandler('app.log', maxBytes=5*1024*1024, backupCount=3)  # 5MB per file, keep 3 backups
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(handler)
 
 # Set page configuration as the first command
 st.set_page_config(page_title="Data Toy", layout="wide", initial_sidebar_state="expanded")
@@ -140,11 +138,11 @@ def restore_session():
                 for key, value in session_data.items():
                     if key not in ['authenticated', 'username', 'user_info', 'session_token', 'page']:
                         st.session_state[key] = value
-                logger.debug(f"Session restored for user {username}, authenticated: {st.session_state.authenticated}, page: {st.session_state.page}")
+                logger.info(f"Session restored for user {username}, authenticated: {st.session_state.authenticated}, page: {st.session_state.page}")
             else:
                 logger.debug("No session found for the given session token")
         except Exception as e:
-            logger.debug(f"Error in restore_session: {str(e)}")
+            logger.error(f"Error in restore_session: {str(e)}")
         finally:
             conn.close()
     else:
@@ -192,9 +190,9 @@ def save_auth_state():
             c.execute("INSERT INTO sessions (username, session_token, session_data) VALUES (%s, %s, %s) ON CONFLICT (username) DO UPDATE SET session_token = %s, session_data = %s",
                       (st.session_state.username, st.session_state.session_token, session_blob, st.session_state.session_token, session_blob))
             conn.commit()
-            logger.debug("Session state saved successfully")
+            logger.info("Session state saved successfully")
         except Exception as e:
-            logger.debug(f"Error in save_auth_state: {str(e)}")
+            logger.error(f"Error in save_auth_state: {str(e)}")
         finally:
             conn.close()
 
