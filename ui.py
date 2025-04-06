@@ -292,7 +292,11 @@ def render_clean_page() -> None:
                 st.session_state.progress["Clean"] = "Done"
                 # Display the cleaned dataset immediately
                 st.subheader("Cleaned Dataset Preview (After Smart Workflow)")
-                view_option = st.radio("View dataset as:", ("First 10 Rows", "Full Dataset"), horizontal=True, key="view_option_smart_workflow")
+                if 'view_option_smart_workflow' not in st.session_state:
+                    st.session_state.view_option_smart_workflow = "First 10 Rows"
+                view_option = st.radio("View dataset as:", ("First 10 Rows", "Full Dataset"), 
+                                       index=0 if st.session_state.view_option_smart_workflow == "First 10 Rows" else 1, 
+                                       key="view_option_smart_workflow")
                 if view_option == "First 10 Rows":
                     st.dataframe(st.session_state.cleaned_df.head(10))
                 else:
@@ -611,7 +615,11 @@ def render_clean_page() -> None:
                         st.session_state.progress["Clean"] = "Done"
                         # Display the cleaned dataset immediately
                         st.subheader("Cleaned Dataset Preview (After Applying Changes)")
-                        view_option = st.radio("View dataset as:", ("First 10 Rows", "Full Dataset"), horizontal=True, key="view_option_apply_changes")
+                        if 'view_option_apply_changes' not in st.session_state:
+                            st.session_state.view_option_apply_changes = "First 10 Rows"
+                        view_option = st.radio("View dataset as:", ("First 10 Rows", "Full Dataset"), 
+                                               index=0 if st.session_state.view_option_apply_changes == "First 10 Rows" else 1, 
+                                               key="view_option_apply_changes")
                         if view_option == "First 10 Rows":
                             st.dataframe(st.session_state.cleaned_df.head(10))
                         else:
@@ -703,7 +711,11 @@ def render_clean_page() -> None:
                             st.session_state.progress["Clean"] = "Done"
                             # Display the cleaned dataset immediately
                             st.subheader("Cleaned Dataset Preview (After Applying Template)")
-                            view_option = st.radio("View dataset as:", ("First 10 Rows", "Full Dataset"), horizontal=True, key="view_option_apply_template")
+                            if 'view_option_apply_template' not in st.session_state:
+                                st.session_state.view_option_apply_template = "First 10 Rows"
+                            view_option = st.radio("View dataset as:", ("First 10 Rows", "Full Dataset"), 
+                                                   index=0 if st.session_state.view_option_apply_template == "First 10 Rows" else 1, 
+                                                   key="view_option_apply_template")
                             if view_option == "First 10 Rows":
                                 st.dataframe(st.session_state.cleaned_df.head(10))
                             else:
