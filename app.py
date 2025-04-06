@@ -62,8 +62,9 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     c = conn.cursor()
+    # Updated password column to BYTEA
     c.execute('''CREATE TABLE IF NOT EXISTS users 
-                 (username TEXT PRIMARY KEY, email TEXT, name TEXT, password TEXT, google_id TEXT, profile_picture TEXT)''')
+                 (username TEXT PRIMARY KEY, email TEXT, name TEXT, password BYTEA, google_id TEXT, profile_picture TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS sessions 
                  (username TEXT PRIMARY KEY, session_data BYTEA)''')
     conn.commit()
@@ -101,6 +102,12 @@ def verify_user(username: str, password: str) -> bool:
         # If stored_password is None (e.g., Google OAuth user), return False
         if stored_password is None:
             return False
+        # If stored_password is a memoryview (from BYTEA), convert to bytes
+        if isinstance(stored_password, memoryview):
+            stored_password = stored_password.tobytes()
+        # Fallback: if stored_password is a string (from old data), encode to bytes
+        if isinstance(stored_password, str):
+            stored_password = stored_password.encode('utf-8')
         return bcrypt.checkpw(password.encode('utf-8'), stored_password)
     return False
 
