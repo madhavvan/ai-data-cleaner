@@ -268,14 +268,15 @@ def render_clean_page() -> None:
             columns_to_drop = st.multiselect(
                 "Select columns to drop", 
                 available_columns, 
-                help="Choose columns to remove from the dataset"
+                help="Choose columns to remove from the dataset",
+                key="columns_to_drop"
             )
         
         with custom_rules_container:
             with st.expander("Custom Cleaning Rules", expanded=False):
                 st.markdown("**Define custom cleaning rules**")
                 st.markdown('<span title="Create rules like \'if column X > 100, set to NaN\'">ℹ️</span>', unsafe_allow_html=True)
-                num_rules = st.number_input("Number of Custom Rules", min_value=0, max_value=10, value=0, step=1)
+                num_rules = st.number_input("Number of Custom Rules", min_value=0, max_value=10, value=0, step=1, key="num_rules")
                 for i in range(num_rules):
                     with st.container():
                         st.write(f"**Rule {i+1}**")
@@ -302,23 +303,27 @@ def render_clean_page() -> None:
                 replace_value = st.text_input(
                     "Value to replace (e.g., ?, 999, Unknown)", 
                     "", 
-                    help="Enter the value you want to replace"
+                    help="Enter the value you want to replace",
+                    key="replace_value"
                 )
                 replace_with = st.radio(
                     "Replace with", 
                     ["NaN", "?", "0", "Custom"], 
-                    help="Select what to replace the value with"
+                    help="Select what to replace the value with",
+                    key="replace_with"
                 )
                 if replace_with == "Custom":
                     replace_with = st.text_input(
                         "Custom replacement value", 
                         "", 
-                        help="Enter a custom replacement value"
+                        help="Enter a custom replacement value",
+                        key="replace_with_custom"
                     )
                 replace_scope = st.radio(
                     "Apply to", 
                     ["All columns", "Numeric columns", "Categorical columns"], 
-                    help="Choose which columns to apply the replacement to"
+                    help="Choose which columns to apply the replacement to",
+                    key="replace_scope"
                 )
         
         with encode_container:
@@ -328,12 +333,14 @@ def render_clean_page() -> None:
                 encode_cols = st.multiselect(
                     "Select categorical columns to convert", 
                     cat_cols, 
-                    help="Choose categorical columns to convert to numerical"
+                    help="Choose categorical columns to convert to numerical",
+                    key="encode_cols"
                 )
                 encode_method = st.radio(
                     "Conversion method", 
                     ["Label Encoding", "One-Hot Encoding"], 
-                    help="Label Encoding assigns integers; One-Hot creates dummy columns"
+                    help="Label Encoding assigns integers; One-Hot creates dummy columns",
+                    key="encode_method"
                 )
         
         with enrich_container:
@@ -342,12 +349,14 @@ def render_clean_page() -> None:
                 enrich_col = st.selectbox(
                     "Column to Enrich (e.g., address)", 
                     ["None"] + available_columns, 
-                    help="Select a column to enrich with external data"
+                    help="Select a column to enrich with external data",
+                    key="enrich_col"
                 )
                 enrich_api_key = st.text_input(
                     "Google API Key (for geolocation)", 
                     type="password", 
-                    help="Enter your Google Maps API key"
+                    help="Enter your Google Maps API key",
+                    key="enrich_api_key"
                 )
                 if enrich_col != "None" and not enrich_api_key:
                     st.warning("Google API Key is required for data enrichment.")
@@ -355,11 +364,12 @@ def render_clean_page() -> None:
         with ai_container:
             with st.expander("AI Cleaning Suggestions", expanded=True):
                 st.markdown('<span title="AI-driven suggestions to automate data cleaning">ℹ️</span>', unsafe_allow_html=True)
-                for suggestion, explanation in st.session_state.suggestions:
+                for idx, (suggestion, explanation) in enumerate(st.session_state.suggestions):
                     if "Based on the provided dataset analysis" in suggestion:
                         st.markdown(f"**{suggestion}** - {explanation}")
                     else:
-                        if st.checkbox(f"{suggestion}", key=f"suggestion_{suggestion}"):
+                        # Use unique key by combining suggestion with index
+                        if st.checkbox(f"{suggestion}", key=f"suggestion_{suggestion}_{idx}"):
                             selected_suggestions.append((suggestion, explanation))
                             st.session_state.ai_suggestions_used += 1
                             st.markdown(f"**Explanation:** {explanation}")
@@ -367,7 +377,7 @@ def render_clean_page() -> None:
                                 options["special_chars"] = st.radio(
                                     "Action for special characters", 
                                     ("Drop them", "Replace with underscores"), 
-                                    key=f"special_chars_opt_{suggestion}"
+                                    key=f"special_chars_opt_{suggestion}_{idx}"
                                 )
                             elif "Fill missing values" in suggestion:
                                 col = extract_column(suggestion)
@@ -375,7 +385,7 @@ def render_clean_page() -> None:
                                     options[f"fill_{col}"] = st.radio(
                                         f"Fill method for {col}", 
                                         ["mean", "median", "mode"], 
-                                        key=f"fill_opt_{col}_{suggestion}"
+                                        key=f"fill_opt_{col}_{suggestion}_{idx}"
                                     )
                             elif "Handle outliers" in suggestion:
                                 col = extract_column(suggestion)
@@ -383,7 +393,7 @@ def render_clean_page() -> None:
                                     options[f"outlier_{col}"] = st.radio(
                                         f"Action for outliers in {col}", 
                                         ("Remove", "Cap at bounds"), 
-                                        key=f"outlier_opt_{col}_{suggestion}"
+                                        key=f"outlier_opt_{col}_{suggestion}_{idx}"
                                     )
         
         with anomaly_container:
@@ -393,12 +403,14 @@ def render_clean_page() -> None:
                 anomaly_cols = st.multiselect(
                     "Select numerical columns for anomaly detection", 
                     num_cols, 
-                    help="Detect outliers using AI"
+                    help="Detect outliers using AI",
+                    key="anomaly_cols"
                 )
                 contamination = st.slider(
                     "Contamination factor", 
                     0.01, 0.5, 0.1, 
-                    help="Percentage of data expected to be anomalies"
+                    help="Percentage of data expected to be anomalies",
+                    key="contamination"
                 )
                 if anomaly_cols:
                     with st.spinner("Detecting anomalies..."):
@@ -415,14 +427,16 @@ def render_clean_page() -> None:
                 target_col = st.selectbox(
                     "Target Column (to predict)", 
                     available_columns, 
-                    help="Column to predict with ML"
+                    help="Column to predict with ML",
+                    key="target_col"
                 )
                 feature_cols = st.multiselect(
                     "Feature Columns", 
                     [col for col in available_columns if col != target_col], 
-                    help="Columns to use as predictors"
+                    help="Columns to use as predictors",
+                    key="feature_cols"
                 )
-                train_ml = st.checkbox("Train and Deploy ML Model", help="Generate a prediction app")
+                train_ml = st.checkbox("Train and Deploy ML Model", help="Generate a prediction app", key="train_ml")
                 if train_ml and not (target_col and feature_cols):
                     st.warning("Please select a target column and at least one feature column for ML deployment.")
 
@@ -434,6 +448,7 @@ def render_clean_page() -> None:
         with col3:
             auto_clean_button = st.form_submit_button(label="Auto-Clean")
 
+    # Handle form submission
     if preview_button or apply_button or auto_clean_button:
         operations_selected = (
             selected_suggestions or
@@ -523,7 +538,7 @@ def render_clean_page() -> None:
         st.subheader("Save/Apply Cleaning Templates")
         st.markdown('<span title="Save your cleaning configuration as a template to reuse later">ℹ️</span>', unsafe_allow_html=True)
         with st.form(key="template_form"):
-            template_name = st.text_input("Template Name", "", help="Enter a name to save this cleaning configuration")
+            template_name = st.text_input("Template Name", "", help="Enter a name to save this cleaning configuration", key="template_name")
             save_template_button = st.form_submit_button("Save as Template")
 
             if save_template_button and template_name:
@@ -547,7 +562,7 @@ def render_clean_page() -> None:
 
         if st.session_state.cleaning_templates:
             with st.form(key="apply_template_form"):
-                template_to_apply = st.selectbox("Apply Saved Template", ["None"] + list(st.session_state.cleaning_templates.keys()))
+                template_to_apply = st.selectbox("Apply Saved Template", ["None"] + list(st.session_state.cleaning_templates.keys()), key="apply_template")
                 apply_template_button = st.form_submit_button("Apply Template")
 
                 if apply_template_button and template_to_apply != "None":
@@ -698,8 +713,8 @@ def render_predictive_page(df: pd.DataFrame) -> None:
     render_predictive_page_external(df)
 
     st.subheader("Generate Synthetic Data")
-    task_type = st.selectbox("Task Type", ["classification", "regression"])
-    if st.button("Generate Synthetic Data"):
+    task_type = st.selectbox("Task Type", ["classification", "regression"], key="task_type")
+    if st.button("Generate Synthetic Data", key="generate_synthetic"):
         with st.spinner("Generating synthetic data..."):
             try:
                 synthetic_df = generate_synthetic_data(df, task_type)
@@ -721,10 +736,10 @@ def render_predictive_page(df: pd.DataFrame) -> None:
     st.subheader("Time Series Forecasting")
     time_cols = [col for col in df.columns if pd.api.types.is_datetime64_any_dtype(df[col])]
     if time_cols:
-        forecast_col = st.selectbox("Select time series column", time_cols)
-        periods = st.slider("Forecast periods", 1, 30, 5)
-        freq = st.selectbox("Frequency", ["D", "M", "Y"], help="Select the frequency of the time series data")
-        if st.button("Forecast"):
+        forecast_col = st.selectbox("Select time series column", time_cols, key="forecast_col")
+        periods = st.slider("Forecast periods", 1, 30, 5, key="forecast_periods")
+        freq = st.selectbox("Frequency", ["D", "M", "Y"], help="Select the frequency of the time series data", key="forecast_freq")
+        if st.button("Forecast", key="forecast_button"):
             with st.spinner("Forecasting..."):
                 try:
                     forecast_df = forecast_time_series(df, forecast_col, periods, time_col=forecast_col, freq=freq)
@@ -742,8 +757,8 @@ def render_predictive_page(df: pd.DataFrame) -> None:
     st.subheader("Time Series Decomposition")
     if time_cols:
         decompose_col = st.selectbox("Select column for decomposition", time_cols, key="decompose_col")
-        period = st.slider("Period for decomposition", 1, 30, 12)
-        if st.button("Decompose Time Series"):
+        period = st.slider("Period for decomposition", 1, 30, 12, key="decompose_period")
+        if st.button("Decompose Time Series", key="decompose_button"):
             with st.spinner("Decomposing time series..."):
                 try:
                     decomposition = analyze_time_series(df, decompose_col, period)
@@ -765,8 +780,8 @@ def render_predictive_page(df: pd.DataFrame) -> None:
 
     st.subheader("Clustering")
     numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    cluster_cols = st.multiselect("Select columns for clustering", numeric_cols)
-    n_clusters = st.slider("Number of clusters", 2, 10, 3)
+    cluster_cols = st.multiselect("Select columns for clustering", numeric_cols, key="cluster_cols")
+    n_clusters = st.slider("Number of clusters", 2, 10, 3, key="n_clusters")
     if st.button("Perform Clustering", key="ui_perform_clustering"):
         if len(cluster_cols) < 2:
             st.warning("Please select at least two columns for clustering")
