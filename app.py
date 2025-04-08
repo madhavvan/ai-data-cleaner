@@ -113,7 +113,7 @@ init_db()
 def restore_session():
     logger.debug("Starting restore_session")
     # Check for session token in query parameters
-    session_token = st.query_params.get('session_token', None)
+    session_token = st.query_params.get('session_token', [None])[0]  # Updated for Streamlit query params
     logger.debug(f"Session token from query params: {session_token}")
     if session_token:
         conn = get_db_connection()
@@ -550,7 +550,9 @@ def get_google_auth_url():
 def handle_google_callback():
     try:
         client = OAuth2Session(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, redirect_uri=GOOGLE_REDIRECT_URI, state=st.session_state.get('oauth_state'))
-        token = client.fetch_token(GOOGLE_TOKEN_URL, authorization_response=str(st.query_params['code']))
+        # Updated for Streamlit query params (code is now a list)
+        code = st.query_params.get('code', [None])[0]
+        token = client.fetch_token(GOOGLE_TOKEN_URL, code=code)
         user_info = requests.get(GOOGLE_USERINFO_URL, headers={'Authorization': f"Bearer {token['access_token']}"}).json()
         if 'error' in user_info:
             st.error(f"Google OAuth error: {user_info['error']}")

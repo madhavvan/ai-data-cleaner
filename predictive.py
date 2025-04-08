@@ -12,6 +12,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, r2_score
 import lime
 import lime.lime_tabular
+import matplotlib.pyplot as plt
 
 # Optional SHAP import with fallback (no top-level Streamlit command)
 try:
@@ -82,6 +83,7 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                             # Fairness Metrics
                             if task_type == "classification":
                                 st.subheader("Fairness Metrics")
+                                y_test = df.loc[X_test.index, target_col]  # Corrected to use target_col from df
                                 y_pred = model.predict(X_test)
                                 # Compute confusion matrix and classification report
                                 cm = confusion_matrix(y_test, y_pred)

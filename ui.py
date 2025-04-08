@@ -138,38 +138,6 @@ def render_upload_page() -> None:
     initialize_session_state()
     st.session_state.progress["Upload"] = "In Progress"
 
-    # Check navigation or delete actions
-    if 'navigate_to_clean' in st.session_state and st.session_state.navigate_to_clean:
-        st.session_state.navigate_to_clean = False
-        st.session_state.page = "Clean"
-        from app import save_auth_state
-        save_auth_state()
-        st.rerun()  # Use st.rerun() instead of experimental_rerun
-        return
-
-    if 'delete_dataset' in st.session_state and st.session_state.delete_dataset:
-        st.session_state.delete_dataset = False
-        st.session_state.df = None
-        st.session_state.cleaned_df = None
-        st.session_state.logs = []
-        st.session_state.suggestions = []
-        st.session_state.previous_states = []
-        st.session_state.redo_states = []
-        st.session_state.chat_history = []
-        st.session_state.cleaning_history = []
-        st.session_state.cleaning_templates = {}
-        st.session_state.ai_suggestions_used = 0
-        st.session_state.dropped_columns = []
-        st.session_state.progress["Upload"] = "Not Started"
-        st.session_state.progress["Clean"] = "Not Started"
-        st.success("Dataset deleted successfully!")
-        from app import save_auth_state
-        save_auth_state()
-        if 'file_uploader' in st.session_state:
-            del st.session_state['file_uploader']
-        st.rerun()  # Use st.rerun()
-        return
-
     # Always display the upload widget
     uploaded_file = st.file_uploader(
         "Choose a file (CSV, Excel, JSON, or Parquet)",
@@ -178,10 +146,10 @@ def render_upload_page() -> None:
         key="file_uploader"
     )
 
-    # Display buttons and metadata if dataset exists
+    # Display metadata if dataset exists (no buttons)
     if st.session_state.df is not None:
         st.subheader("Original Dataset Preview (First 10 Rows)")
-        st.dataframe(st.session_state.df.head(10))
+        st.dataframe(st.session_state.df.head(10), use_container_width=True)  # Updated with use_container_width
         st.subheader("Basic Metadata")
         score = calculate_health_score(st.session_state.df)
         st.write(f"Rows: {st.session_state.df.shape[0]}")
@@ -191,23 +159,6 @@ def render_upload_page() -> None:
         st.write(f"Dataset Health Score: {score}/100")
         st.info("This is the original dataset. Cleaning operations are applied to a working copy.")
         st.warning("Uploading a new file will overwrite the current dataset and reset all cleaning operations. Proceed with caution!")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Start Cleaning Dataset", help="Proceed to the Cleaning page to clean your dataset", key="start_cleaning_button"):
-                logger.info("Start Cleaning button clicked")
-                st.session_state.navigate_to_clean = True
-                st.session_state.page = "Clean"  # Update page state immediately
-                from app import save_auth_state
-                save_auth_state()
-                st.rerun()
-        with col2:
-            if st.button("Delete Dataset", help="Remove the uploaded dataset and reset all cleaning operations", key="delete_dataset_button"):
-                logger.info("Delete Dataset button clicked")
-                st.session_state.delete_dataset = True
-                from app import save_auth_state
-                save_auth_state()
-                st.rerun()
 
     # Handle file upload
     if uploaded_file:
@@ -285,7 +236,7 @@ def render_upload_page() -> None:
                 st.session_state.progress["Upload"] = "Done"
                 from app import save_auth_state
                 save_auth_state()
-                st.rerun()  # Rerun to show buttons immediately
+                st.rerun()  # Rerun to refresh the UI after upload
         except Exception as e:
             st.error(f"Error loading file: {str(e)}. Please ensure the file is a valid CSV, Excel, JSON, or Parquet file.")
             st.session_state.progress["Upload"] = "Failed"
@@ -622,9 +573,9 @@ def render_clean_page() -> None:
                     if preview_button:
                         st.subheader("Preview of Changes")
                         st.write("Before:")
-                        st.dataframe(df.head(10))
+                        st.dataframe(df.head(10), use_container_width=True)
                         st.write("After:")
-                        st.dataframe(cleaned_df.head(10))
+                        st.dataframe(cleaned_df.head(10), use_container_width=True)
                         st.write("Preview Logs:")
                         for log in logs:
                             st.write(f"- {log}")
@@ -828,7 +779,7 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                     "logs": ["Generated synthetic data"]
                 })
                 st.write("Synthetic Dataset Preview:")
-                st.dataframe(synthetic_df.head(10))
+                st.dataframe(synthetic_df.head(10), use_container_width=True)
                 st.markdown(get_download_link(synthetic_df, 
                                             f"synthetic_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
                            unsafe_allow_html=True)
@@ -847,7 +798,7 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                 try:
                     forecast_df = forecast_time_series(df, forecast_col, periods, time_col=forecast_col, freq=freq)
                     st.write("Forecasted Values:")
-                    st.dataframe(forecast_df)
+                    st.dataframe(forecast_df, use_container_width=True)
                     st.markdown(get_download_link(forecast_df, 
                                                 f"forecast_{forecast_col}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
                                unsafe_allow_html=True)
@@ -900,7 +851,7 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                         "logs": ["Performed clustering"]
                     })
                     st.write("Dataset with Cluster Labels:")
-                    st.dataframe(df.head(10))
+                    st.dataframe(df.head(10), use_container_width=True)
                     st.markdown(get_download_link(df, 
                                                 f"clustered_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
                                unsafe_allow_html=True)

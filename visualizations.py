@@ -453,7 +453,7 @@ def render_visualization_page(df):
                 fig_dist = px.bar(x=cluster_counts.index.astype(str), y=cluster_counts.values, labels={'x': 'Cluster', 'y': 'Number of Points'}, title="Cluster Distribution", color=cluster_counts.index.astype(str))
                 st.plotly_chart(fig_dist, use_container_width=True)
                 st.write("Dataset with Cluster Labels:")
-                st.dataframe(df)
+                st.dataframe(df, use_container_width=True)
                 is_clustering = True
 
             if not is_wordcloud and not is_jointplot and not is_clustering:

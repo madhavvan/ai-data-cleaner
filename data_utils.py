@@ -842,7 +842,7 @@ st.write(f"Predicted {target_col}: {{prediction}}")
         st.error(f"Failed to generate ML app: {str(e)}")
         return f"Error: Failed to generate ML app - {str(e)}"
 
-#  @st.cache_data from chat_with_gpt
+# @st.cache_data removed from chat_with_gpt to allow dynamic interaction
 def chat_with_gpt(df: pd.DataFrame, message: str, max_tokens: int = 100) -> str:
     """
     Chat with GPT about the dataset, with identity response for relevant questions.
