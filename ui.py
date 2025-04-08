@@ -94,25 +94,33 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
         return
 
     st.subheader("Cleaned Dataset Preview")
-    # Ensure view_option persists in session state
     if 'cleaned_view_option' not in st.session_state:
         st.session_state.cleaned_view_option = "First 10 Rows"
     
-    # Radio button with session state persistence
     view_option = st.radio(
         "View dataset as:", 
         ("First 10 Rows", "Full Dataset"), 
         horizontal=True, 
         key="cleaned_view_option_key",
-        index=0 if st.session_state.cleaned_view_option == "First 10 Rows" else 1
+        index=0 if st.session_state.cleaned_view_option == "First 10 Rows" else 1,
+        label_visibility="visible"  # Add for accessibility
     )
-    if view_option != st.session_state.cleaned_view_option:  # Update session state
+    if view_option != st.session_state.cleaned_view_option:
         st.session_state.cleaned_view_option = view_option
+        st.write("Switching view...")
 
-    if view_option == "First 10 Rows":
-        st.dataframe(cleaned_df.head(10), use_container_width=True)
-    else:
-        st.dataframe(cleaned_df, use_container_width=True)
+    try:
+        st.write(f"Dataset size: {cleaned_df.shape}")
+        if view_option == "First 10 Rows":
+            st.dataframe(cleaned_df.head(10), use_container_width=True)
+        else:
+            if len(cleaned_df) > 1000:
+                st.warning(f"Dataset has {len(cleaned_df)} rows. Displaying first 1000 rows to avoid performance issues.")
+                st.dataframe(cleaned_df.head(1000), use_container_width=True)
+            else:
+                st.dataframe(cleaned_df, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error displaying dataset: {str(e)}")
 
     # Summary (always visible)
     st.subheader("Cleaning Summary")
@@ -408,9 +416,9 @@ def render_clean_page() -> None:
                 st.markdown("**Replace unwanted values (e.g., '?' for missing data)**")
                 st.markdown('<span title="Replace specific values across selected columns">ℹ️</span>', unsafe_allow_html=True)
                 replace_value = st.text_input(
-                    "Value to replace (e.g., ?, 999, Unknown)", 
-                    "", 
-                    help="Enter the value you want to replace",
+                    "Value to Replace",  # Non-empty label
+                    value="", 
+                    help="Enter the value you want to replace (e.g., ?, 999, Unknown)",
                     key="replace_value"
                 )
                 replace_with = st.radio(
