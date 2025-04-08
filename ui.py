@@ -93,21 +93,13 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
         st.warning("No cleaned dataset available to display.")
         return
 
-    st.subheader("Cleaned Dataset Preview")
-    if 'cleaned_view_option' not in st.session_state:
-        st.session_state.cleaned_view_option = "First 10 Rows"
-    
-    view_option = st.radio(
-        "View dataset as:", 
-        ("First 10 Rows", "Full Dataset"), 
-        horizontal=True, 
-        key="cleaned_view_option_key",
-        index=0 if st.session_state.cleaned_view_option == "First 10 Rows" else 1,
-        label_visibility="visible"  # Add for accessibility
-    )
-    if view_option != st.session_state.cleaned_view_option:
-        st.session_state.cleaned_view_option = view_option
-        st.write("Switching view...")
+    if st.session_state.cleaned_df is not None:
+        st.subheader("Cleaned Dataset Preview")
+        view_option = st.radio("View dataset as:", ("First 10 Rows", "Full Dataset"), horizontal=True)
+        if view_option == "First 10 Rows":
+            st.dataframe(st.session_state.cleaned_df.head(10))
+        else:
+            st.dataframe(st.session_state.cleaned_df, use_container_width=True, height=600)
 
     try:
         st.write(f"Dataset size: {cleaned_df.shape}")
