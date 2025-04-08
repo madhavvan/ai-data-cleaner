@@ -734,7 +734,7 @@ def render_clean_page() -> None:
                 "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "logs": ["Undid last cleaning operation"]
             })
-            st.experimental_rerun()
+            st.rerun()
 
     with col2:
         if st.session_state.redo_states and st.button("Redo Last Cleaning", help="Reapply the last undone state"):
@@ -749,7 +749,7 @@ def render_clean_page() -> None:
                 "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "logs": ["Redid last cleaning operation"]
             })
-            st.experimental_rerun()
+            st.rerun()
 
     with st.expander("Cleaning History", expanded=False):
         st.subheader("Cleaning History")
