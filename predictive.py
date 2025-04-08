@@ -13,13 +13,12 @@ from sklearn.metrics import accuracy_score, r2_score
 import lime
 import lime.lime_tabular
 
-# Optional SHAP import with fallback
+# Optional SHAP import with fallback (no top-level Streamlit command)
 try:
     import shap
     SHAP_AVAILABLE = True
 except ImportError:
     SHAP_AVAILABLE = False
-    st.warning("SHAP library not installed. Feature importance visualizations will be unavailable.")
 
 def render_predictive_page(df: pd.DataFrame) -> None:
     """
@@ -28,6 +27,10 @@ def render_predictive_page(df: pd.DataFrame) -> None:
     Args:
         df (pd.DataFrame): Input DataFrame.
     """
+    # Move the SHAP warning here
+    if not SHAP_AVAILABLE:
+        st.warning("SHAP library not installed. Feature importance visualizations will be unavailable.")
+
     if df is None or df.empty:
         st.error("No dataset available. Please upload a dataset on the Upload page.")
         return
