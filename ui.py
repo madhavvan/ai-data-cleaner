@@ -94,6 +94,9 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
         return
 
     st.subheader("Cleaned Dataset Preview")
+    # Ensure view_option persists in session state
+    if 'cleaned_view_option' not in st.session_state:
+        st.session_state.cleaned_view_option = "First 10 Rows"
     
     # Radio button with session state persistence
     view_option = st.radio(
@@ -101,25 +104,15 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
         ("First 10 Rows", "Full Dataset"), 
         horizontal=True, 
         key="cleaned_view_option_key",
-        on_change=lambda: setattr(st.session_state, 'cleaned_view_option', st.session_state.cleaned_view_option_key)
+        index=0 if st.session_state.cleaned_view_option == "First 10 Rows" else 1
     )
-    st.session_state.cleaned_view_option = view_option  # Update session state
+    if view_option != st.session_state.cleaned_view_option:  # Update session state
+        st.session_state.cleaned_view_option = view_option
 
     if view_option == "First 10 Rows":
         st.dataframe(cleaned_df.head(10), use_container_width=True)
     else:
-        # Pagination for large datasets
-        rows_per_page = 100
-        total_rows = len(cleaned_df)
-        total_pages = (total_rows // rows_per_page) + (1 if total_rows % rows_per_page else 0)
-        
-        if total_pages > 1:
-            page = st.selectbox("Select Page", range(1, total_pages + 1), key="full_dataset_page")
-            start_idx = (page - 1) * rows_per_page
-            end_idx = min(start_idx + rows_per_page, total_rows)
-            st.dataframe(cleaned_df.iloc[start_idx:end_idx], use_container_width=True)
-        else:
-            st.dataframe(cleaned_df, use_container_width=True)
+        st.dataframe(cleaned_df, use_container_width=True)
 
     # Summary (always visible)
     st.subheader("Cleaning Summary")
