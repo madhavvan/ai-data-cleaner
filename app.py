@@ -5,7 +5,15 @@ from psycopg2 import sql
 import uuid  # For generating session tokens
 import logging
 from logging.handlers import RotatingFileHandler
-
+import os
+from typing import Optional
+from ui import render_upload_page, render_clean_page, render_insights_page, render_predictive_page
+from visualizations import render_visualization_page
+from data_utils import chat_with_gpt, AI_AVAILABLE
+import pickle
+import bcrypt
+from authlib.integrations.requests_client import OAuth2Session
+import requests
 st.set_page_config(page_title="Data Toy", layout="wide", initial_sidebar_state="expanded")
 
 # Set up logging with rotation
@@ -18,15 +26,7 @@ if not logger.handlers:  # Avoid adding handlers multiple times
 
 
 
-import os
-from typing import Optional
-from ui import render_upload_page, render_clean_page, render_insights_page, render_predictive_page
-from visualizations import render_visualization_page
-from data_utils import chat_with_gpt, AI_AVAILABLE
-import pickle
-import bcrypt
-from authlib.integrations.requests_client import OAuth2Session
-import requests
+
 
 # Google OAuth Configuration
 GOOGLE_CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
