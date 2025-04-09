@@ -6,6 +6,8 @@ import uuid  # For generating session tokens
 import logging
 from logging.handlers import RotatingFileHandler
 
+st.set_page_config(page_title="Data Toy", layout="wide", initial_sidebar_state="expanded")
+
 # Set up logging with rotation
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)  # Change to INFO for production
@@ -14,8 +16,7 @@ if not logger.handlers:  # Avoid adding handlers multiple times
     handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(handler)
 
-# Set page configuration as the first command
-st.set_page_config(page_title="Data Toy", layout="wide", initial_sidebar_state="expanded")
+
 
 import os
 from typing import Optional
