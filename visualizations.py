@@ -11,27 +11,22 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from scipy.cluster.hierarchy import dendrogram, linkage
-import dask.dataframe as dd  # For lazy loading of large datasets
+import dask.dataframe as dd
 import io
-import kaleido  # For exporting Plotly figures
+import kaleido
 
 def render_visualization_page(df):
-    """Render the visualization page with advanced options, dashboards, and export capabilities."""
     if df is None or df.empty:
         st.warning("Please upload a dataset first on the Upload page.")
         return
     
     st.title("📊 Visualize Your Dataset")
-
-    # Update progress
     st.session_state.progress["Visualize"] = "In Progress"
 
-    # Convert to Dask DataFrame for lazy loading if dataset is large
     if len(df) > 10000:
-        st.info("Large dataset detected. Using lazy loading for performance.")
+        st.info("Large dataset detected. Using lazy loading.")
         df = dd.from_pandas(df, npartitions=4)
 
-    # Initialize session state for filtered data, clustering, and dashboard
     if 'filtered_df' not in st.session_state:
         st.session_state.filtered_df = df.copy()
     if 'clustering_labels' not in st.session_state:
@@ -43,7 +38,6 @@ def render_visualization_page(df):
     if 'dashboard_filters' not in st.session_state:
         st.session_state.dashboard_filters = {}
 
-    # Compute Dask DataFrame if necessary
     if isinstance(st.session_state.filtered_df, dd.DataFrame):
         st.session_state.filtered_df = st.session_state.filtered_df.compute()
 
@@ -57,14 +51,13 @@ def render_visualization_page(df):
             "Word Cloud", "Gauge Chart", "Funnel Chart", "Sankey Diagram", "Waterfall Chart",
             "Pair Plot", "Joint Plot", "Clustering"
         ]
-        viz_type = st.selectbox("Select Visualization Type", viz_types, help="Choose the type of chart to display.")
+        viz_type = st.selectbox("Select Visualization Type", viz_types)
         
         numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
         all_cols = df.columns.tolist()
         time_cols = [col for col in df.columns if pd.api.types.is_datetime64_any_dtype(df[col])]
         object_cols = df.select_dtypes(include=['object']).columns.tolist()
 
-        # Dynamic Filters (shared across dashboard)
         st.subheader("Filter Data")
         filter_col = st.selectbox("Filter By (Optional)", ["None"] + all_cols, key="global_filter_col")
         filtered_df = df.copy()
@@ -73,9 +66,9 @@ def render_visualization_page(df):
             if pd.api.types.is_numeric_dtype(col_type):
                 min_val, max_val = float(df[filter_col].min()), float(df[filter_col].max())
                 if pd.isna(min_val) or pd.isna(max_val):
-                    st.warning(f"Column {filter_col} contains missing values. Filtering may exclude these rows.")
+                    st.warning(f"Column {filter_col} contains missing values.")
                 elif min_val == max_val:
-                    st.warning(f"Column {filter_col} has identical values ({min_val}). Range filtering is not applicable.")
+                    st.warning(f"Column {filter_col} has identical values ({min_val}).")
                 else:
                     selected_range = st.slider(
                         f"Filter {filter_col} (range)", 
@@ -92,9 +85,9 @@ def render_visualization_page(df):
             elif pd.api.types.is_datetime64_any_dtype(col_type):
                 min_date, max_date = df[filter_col].min(), df[filter_col].max()
                 if pd.isna(min_date) or pd.isna(max_date):
-                    st.warning(f"Column {filter_col} contains missing values. Filtering may exclude these rows.")
+                    st.warning(f"Column {filter_col} contains missing values.")
                 elif min_date == max_date:
-                    st.warning(f"Column {filter_col} has identical dates ({min_date}). Date range filtering is not applicable.")
+                    st.warning(f"Column {filter_col} has identical dates ({min_date}).")
                 else:
                     selected_dates = st.date_input(
                         f"Filter {filter_col} (date range)", 
@@ -113,7 +106,7 @@ def render_visualization_page(df):
             else:
                 unique_vals = df[filter_col].dropna().unique().tolist()
                 if len(unique_vals) == 1:
-                    st.warning(f"Column {filter_col} has a single unique value ({unique_vals[0]}). Filtering is not applicable.")
+                    st.warning(f"Column {filter_col} has a single value ({unique_vals[0]}).")
                 else:
                     filter_value = st.multiselect(f"Select {filter_col} values", unique_vals, default=unique_vals)
                     if filter_value:
@@ -124,59 +117,62 @@ def render_visualization_page(df):
             st.session_state.filtered_df = filtered_df
             st.write(f"Filtered dataset: {filtered_df.shape[0]} rows, {filtered_df.shape[1]} columns")
         else:
-            st.warning("Filters resulted in an empty dataset. Please adjust your filters.")
+            st.warning("Filters resulted in an empty dataset.")
             st.session_state.filtered_df = df.copy()
             return
 
-        # Reset clustering labels if not using Clustering visualization
         if viz_type != "Clustering" and 'Cluster' in st.session_state.filtered_df.columns:
-            st.session_state.filtered_df = st.session_state.filtered_df.drop(columns=['Cluster'])
+            # Fix 10: Rename existing Cluster column to avoid overwrite
+            st.session_state.filtered_df = st.session_state.filtered_df.rename(columns={'Cluster': 'Cluster_Old'})
             st.session_state.clustering_labels = None
             st.session_state.cluster_cols = []
 
-        # Visualization Configuration
         x_col = y_col = hue_col = z_col = lat_col = lon_col = size_col = color_col = None
         periods = None
         if viz_type in ["Bar", "Scatter", "Line", "3D Scatter", "Bubble Chart"]:
-            x_col = st.selectbox("X-Axis Column", all_cols, help="Select column for the X-axis.")
-            y_col = st.selectbox("Y-Axis Column", numeric_cols, help="Select column for the Y-axis.")
-            hue_col = st.selectbox("Group By (Optional)", ["None"] + all_cols, help="Optional grouping column.")
+            x_col = st.selectbox("X-Axis Column", all_cols)
+            y_col = st.selectbox("Y-Axis Column", numeric_cols)
+            hue_col = st.selectbox("Group By (Optional)", ["None"] + all_cols)
             if viz_type == "3D Scatter":
-                z_col = st.selectbox("Z-Axis Column", numeric_cols, help="Select column for the Z-axis.")
+                z_col = st.selectbox("Z-Axis Column", numeric_cols)
             if viz_type == "Bubble Chart":
-                size_col = st.selectbox("Size By", numeric_cols, help="Select column for bubble size.")
+                size_col = st.selectbox("Size By", numeric_cols)
 
         elif viz_type == "Histogram":
-            x_col = st.selectbox("Column", numeric_cols, help="Select column to plot.")
-            hue_col = st.selectbox("Group By (Optional)", ["None"] + all_cols, help="Optional grouping column.")
+            x_col = st.selectbox("Column", numeric_cols)
+            hue_col = st.selectbox("Group By (Optional)", ["None"] + all_cols)
 
         elif viz_type in ["Box", "Violin", "Strip Plot", "Swarm Plot"]:
-            x_col = st.selectbox("X-Axis Column (Optional)", ["None"] + all_cols, help="Optional X-axis column.")
-            y_col = st.selectbox("Y-Axis Column", numeric_cols, help="Select column for the Y-axis.")
-            hue_col = st.selectbox("Group By (Optional)", ["None"] + all_cols, help="Optional grouping column.")
+            x_col = st.selectbox("X-Axis Column (Optional)", ["None"] + all_cols)
+            y_col = st.selectbox("Y-Axis Column", numeric_cols)
+            hue_col = st.selectbox("Group By (Optional)", ["None"] + all_cols)
 
         elif viz_type == "Heatmap (Correlation)":
-            x_col = st.multiselect("Columns for Correlation", numeric_cols, default=numeric_cols[:2] if len(numeric_cols) >= 2 else numeric_cols, help="Select numeric columns for correlation heatmap.")
+            x_col = st.multiselect("Columns for Correlation", numeric_cols, default=numeric_cols[:2] if len(numeric_cols) >= 2 else numeric_cols)
 
         elif viz_type == "Pie":
-            x_col = st.selectbox("Categories", all_cols, help="Select column for pie segments.")
-            y_col = st.selectbox("Values", numeric_cols, help="Select column for pie values.")
+            x_col = st.selectbox("Categories", all_cols)
+            y_col = st.selectbox("Values", numeric_cols)
 
         elif viz_type == "Time Series Forecast":
-            x_col = st.selectbox("Time Column", time_cols, help="Select datetime column.")
-            y_col = st.selectbox("Value Column", numeric_cols, help="Select column to forecast.")
-            periods = st.slider("Forecast Periods", 1, 30, 5, help="Number of future periods to predict.")
-            freq = st.selectbox("Frequency", ["D", "M", "Y"], help="Select the frequency of the time series data.")
+            x_col = st.selectbox("Time Column", time_cols)
+            y_col = st.selectbox("Value Column", numeric_cols)
+            periods = st.slider("Forecast Periods", 1, 30, 5)
+            freq = st.selectbox("Frequency", ["D", "M", "Y"])
 
         elif viz_type == "Geospatial Map":
-            lat_col = st.selectbox("Latitude Column", numeric_cols, help="Select latitude column.")
-            lon_col = st.selectbox("Longitude Column", numeric_cols, help="Select longitude column.")
+            lat_col = st.selectbox("Latitude Column", numeric_cols)
+            lon_col = st.selectbox("Longitude Column", numeric_cols)
             size_col = st.selectbox("Size By (Optional)", ["None"] + numeric_cols)
             color_col = st.selectbox("Color By (Optional)", ["None"] + all_cols)
 
         elif viz_type == "Choropleth Map":
+            # Fix 8: Define geo_col and value_col with validation
             geo_col = st.selectbox("Geographic Column (e.g., country, state)", all_cols)
             value_col = st.selectbox("Values", numeric_cols)
+            if not geo_col or not value_col:
+                st.error("Please select both geographic and value columns.")
+                return
 
         elif viz_type == "Heatmap (Geospatial)":
             lat_col = st.selectbox("Latitude Column", numeric_cols)
@@ -260,13 +256,17 @@ def render_visualization_page(df):
             cluster_cols = st.multiselect("Select columns for clustering", numeric_cols, default=numeric_cols[:2] if len(numeric_cols) >= 2 else numeric_cols)
             n_clusters = st.slider("Number of clusters", 2, 10, 3)
 
-        title = st.text_input("Chart Title", f"{viz_type} Visualization", help="Customize the chart title.")
-        add_to_dashboard = st.checkbox("Add to Dashboard", help="Add this chart to a dashboard for combined viewing.")
+        title = st.text_input("Chart Title", f"{viz_type} Visualization")
+        add_to_dashboard = st.checkbox("Add to Dashboard")
         submit_button = st.form_submit_button("Generate Visualization")
 
     if submit_button:
         try:
             df = st.session_state.filtered_df
+            # Fix 12: Sample large datasets for performance
+            if len(df) > 1000:
+                df = df.sample(min(1000, len(df)), random_state=42)
+                st.info(f"Dataset sampled to {len(df)} rows for performance.")
             fig = None
             is_wordcloud = False
             is_jointplot = False
@@ -286,7 +286,7 @@ def render_visualization_page(df):
                 fig = px.violin(df, x=None if x_col == "None" else x_col, y=y_col, color=None if hue_col == "None" else hue_col, title=title)
             elif viz_type == "Heatmap (Correlation)":
                 if len(x_col) < 2:
-                    st.error("Please select at least two numerical columns for the heatmap.")
+                    st.error("Select at least two numerical columns.")
                     return
                 corr = df[x_col].corr()
                 fig = px.imshow(corr, text_auto=True, title=title)
@@ -294,7 +294,7 @@ def render_visualization_page(df):
                 fig = px.pie(df, names=x_col, values=y_col, title=title)
             elif viz_type == "Time Series Forecast":
                 if not time_cols:
-                    st.error("No datetime columns available for forecasting.")
+                    st.error("No datetime columns available.")
                     return
                 forecast_df = forecast_time_series(df, y_col, periods, time_col=x_col, freq=freq)
                 historical = df[[x_col, y_col]].copy()
@@ -315,7 +315,7 @@ def render_visualization_page(df):
                 fig = px.density_mapbox(df, lat=lat_col, lon=lon_col, radius=10, center=dict(lat=df[lat_col].mean(), lon=df[lon_col].mean()), zoom=5, mapbox_style="open-street-map", title=title)
             elif viz_type == "Area Chart":
                 if not time_cols:
-                    st.error("No datetime columns available for area chart.")
+                    st.error("No datetime columns available.")
                     return
                 fig = px.area(df, x=x_col, y=y_col, color=None if hue_col == "None" else hue_col, title=title)
             elif viz_type == "Strip Plot":
@@ -334,17 +334,17 @@ def render_visualization_page(df):
                 fig.update_layout(title=title, xaxis_title=x_col, yaxis_title="Cumulative Probability")
             elif viz_type == "Treemap":
                 if not path_cols:
-                    st.error("Please select at least one column for the hierarchy.")
+                    st.error("Select at least one column for the hierarchy.")
                     return
                 fig = px.treemap(df, path=path_cols, values=values_col, title=title)
             elif viz_type == "Sunburst Chart":
                 if not path_cols:
-                    st.error("Please select at least one column for the hierarchy.")
+                    st.error("Select at least one column for the hierarchy.")
                     return
                 fig = px.sunburst(df, path=path_cols, values=values_col, title=title)
             elif viz_type == "Dendrogram":
                 if len(selected_cols) < 2:
-                    st.error("Please select at least two numerical columns.")
+                    st.error("Select at least two numerical columns.")
                     return
                 X = df[selected_cols].dropna()
                 Z = linkage(X, method='ward')
@@ -383,12 +383,12 @@ def render_visualization_page(df):
                 fig = px.density_heatmap(data, x=data[date_col].dt.day, y=data[date_col].dt.month, z=value_col, title=title)
             elif viz_type == "Parallel Coordinates":
                 if len(selected_cols) < 2:
-                    st.error("Please select at least two numerical columns.")
+                    st.error("Select at least two numerical columns.")
                     return
                 fig = px.parallel_coordinates(df, dimensions=selected_cols, color=None if color_col == "None" else color_col, title=title)
             elif viz_type == "Radar Chart":
                 if len(selected_cols) < 2:
-                    st.error("Please select at least two numerical columns.")
+                    st.error("Select at least two numerical columns.")
                     return
                 grouped = df.groupby(group_col)[selected_cols].mean().reset_index()
                 fig = go.Figure()
@@ -427,7 +427,7 @@ def render_visualization_page(df):
                 fig.update_layout(title=title)
             elif viz_type == "Pair Plot":
                 if len(selected_cols) < 2:
-                    st.error("Please select at least two numerical columns.")
+                    st.error("Select at least two numerical columns.")
                     return
                 fig = px.scatter_matrix(df, dimensions=selected_cols, title=title)
             elif viz_type == "Joint Plot":
@@ -436,7 +436,7 @@ def render_visualization_page(df):
                 is_jointplot = True
             elif viz_type == "Clustering":
                 if len(cluster_cols) < 2:
-                    st.error("Please select at least two numerical columns for clustering.")
+                    st.error("Select at least two numerical columns.")
                     return
                 labels = perform_clustering(df, cluster_cols, n_clusters)
                 st.session_state.clustering_labels = labels
@@ -460,26 +460,28 @@ def render_visualization_page(df):
                 fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white', title_font_color='white', showlegend=True)
                 st.plotly_chart(fig, use_container_width=True)
 
-                # Export Visualization
                 st.subheader("Export Visualization")
                 export_format = st.selectbox("Select Export Format", ["PNG", "SVG", "PDF"])
                 if st.button("Export"):
                     with st.spinner("Exporting visualization..."):
                         buffer = io.BytesIO()
-                        fig.write_image(buffer, format=export_format.lower())
-                        st.download_button(
-                            label=f"Download as {export_format}",
-                            data=buffer,
-                            file_name=f"{title}.{export_format.lower()}",
-                            mime=f"image/{export_format.lower()}"
-                        )
+                        # Fix 9: Handle missing kaleido dependency
+                        try:
+                            fig.write_image(buffer, format=export_format.lower())
+                            st.download_button(
+                                label=f"Download as {export_format}",
+                                data=buffer,
+                                file_name=f"{title}.{export_format.lower()}",
+                                mime=f"image/{export_format.lower()}"
+                            )
+                        except ImportError:
+                            st.error("Kaleido library is missing or not properly installed. Export functionality unavailable.")
 
-                # Add to Dashboard
+                # Fix 11: Store chart configuration instead of full figure
                 if add_to_dashboard:
                     chart_config = {
                         "type": viz_type,
                         "title": title,
-                        "fig": fig,
                         "x_col": x_col,
                         "y_col": y_col,
                         "hue_col": hue_col,
@@ -494,37 +496,45 @@ def render_visualization_page(df):
                     st.session_state.dashboard_charts.append(chart_config)
                     st.success("Chart added to dashboard!")
 
-                # Dynamic Visualization Suggestions
                 st.subheader("Suggested Follow-Up Visualizations")
                 with st.spinner("Generating suggestions..."):
                     suggested_viz, reason = suggest_visualization(df)
                     st.write(f"- **{suggested_viz}**: {reason}")
-                    # Suggest additional visualizations based on current chart
                     if viz_type == "Scatter" and len(numeric_cols) >= 2:
-                        st.write("- **Heatmap (Correlation)**: Explore correlations between numerical variables.")
+                        st.write("- **Heatmap (Correlation)**: Explore correlations.")
                     elif viz_type == "Bar" and len(object_cols) > 0:
-                        st.write("- **Pie Chart**: Visualize the distribution of a categorical column.")
+                        st.write("- **Pie Chart**: Visualize categorical distribution.")
                     elif viz_type == "Line" and time_cols:
-                        st.write("- **Time Series Forecast**: Predict future values for this time series.")
+                        st.write("- **Time Series Forecast**: Predict future values.")
 
             st.success("Visualization generated successfully!")
             st.session_state.progress["Visualize"] = "Done"
         except ValueError as e:
-            st.error(f"Invalid input: {str(e)}. Please check your column selections and data types.")
+            st.error(f"Invalid input: {str(e)}.")
             st.session_state.progress["Visualize"] = "Failed"
         except Exception as e:
-            st.error(f"Error generating visualization: {str(e)}. Ensure columns have valid data and try again.")
+            st.error(f"Error generating visualization: {str(e)}.")
             st.session_state.progress["Visualize"] = "Failed"
 
-    # Dashboard Section
     st.subheader("Create Dashboard")
     if st.session_state.dashboard_charts:
         st.write("### Dashboard")
         for i, chart in enumerate(st.session_state.dashboard_charts):
             st.write(f"**Chart {i+1}: {chart['title']}**")
-            st.plotly_chart(chart['fig'], use_container_width=True)
+            # Fix 11: Regenerate figure from configuration
+            df = st.session_state.filtered_df
+            if chart['type'] == "Bar":
+                fig = px.bar(df, x=chart['x_col'], y=chart['y_col'], color=None if chart['hue_col'] == "None" else chart['hue_col'], title=chart['title'])
+            elif chart['type'] == "Scatter":
+                fig = px.scatter(df, x=chart['x_col'], y=chart['y_col'], color=None if chart['hue_col'] == "None" else chart['hue_col'], title=chart['title'])
+            # Add more chart types as needed
+            else:
+                st.write("(Chart type not yet supported for dashboard regeneration)")
+                continue
+            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white', title_font_color='white')
+            st.plotly_chart(fig, use_container_width=True)
             if st.button(f"Remove Chart {i+1} from Dashboard", key=f"remove_chart_{i}"):
                 st.session_state.dashboard_charts.pop(i)
                 st.rerun()
     else:
-        st.info("No charts added to dashboard yet. Check 'Add to Dashboard' to include charts.")
+        st.info("No charts added to dashboard yet.")
