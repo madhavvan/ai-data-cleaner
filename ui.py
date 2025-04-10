@@ -99,12 +99,6 @@ def initialize_session_state() -> None:
 
 
 def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
-    """
-    Display the cleaned dataset with a persistent view option and pagination for full view.
-
-    Args:
-        cleaned_df (pd.DataFrame): The cleaned dataset to display.
-    """
     if cleaned_df is None or cleaned_df.empty:
         st.warning("No cleaned dataset available to display.")
         return
@@ -113,16 +107,12 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
         st.subheader("Cleaned Dataset Preview")
         view_option = st.radio(
             "View dataset as:",
-            ("First 10 Rows",
-             "Full Dataset"),
+            ("First 10 Rows", "Full Dataset"),
             horizontal=True)
         if view_option == "First 10 Rows":
             st.dataframe(st.session_state.cleaned_df.head(10))
         else:
-            st.dataframe(
-                st.session_state.cleaned_df,
-                use_container_width=True,
-                height=600)
+            st.dataframe(st.session_state.cleaned_df, use_container_width=True, height=600)
 
     try:
         st.write(f"Dataset size: {cleaned_df.shape}")
@@ -130,9 +120,7 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
             st.dataframe(cleaned_df.head(10), use_container_width=True)
         else:
             if len(cleaned_df) > 1000:
-                st.warning(
-                    f"Dataset has {
-                        len(cleaned_df)} rows. Displaying first 1000 rows to avoid performance issues.")
+                st.warning(f"Dataset has {len(cleaned_df)} rows. Displaying first 1000 rows to avoid performance issues.")
                 st.dataframe(cleaned_df.head(1000), use_container_width=True)
             else:
                 st.dataframe(cleaned_df, use_container_width=True)
@@ -149,10 +137,8 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
     st.markdown(
         get_download_link(
             cleaned_df,
-            f"cleaned_data_{
-                datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"),
+            f"cleaned_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"),
         unsafe_allow_html=True)
-
 
 def render_upload_page() -> None:
     st.title("Upload Your Dataset")
