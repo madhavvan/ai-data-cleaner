@@ -31,35 +31,40 @@ if not logger.handlers:  # Avoid adding handlers multiple times
     handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(handler)
 
-# Securely load OpenAI API key
-api_key = None
-try:
-    api_key = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OpenAI API key not found in secrets or environment variables.")
-    logger.info("Successfully loaded OPENAI_API_KEY")
-except Exception as e:
-    logger.error(f"Failed to load OpenAI API key: {str(e)}")
-    st.error("OpenAI API key is missing. Please configure it in .streamlit/secrets.toml or as an environment variable to enable AI features.")
-
-# Initialize OpenAI client with error handling
+# Global client and AI_AVAILABLE initialized as None/False, set later in app.py
 client = None
-if api_key:
-    try:
-        http_client = httpx.Client(proxies=None)
-        client = OpenAI(api_key=api_key, http_client=http_client)
-        logger.info("OpenAI client initialized successfully with version: %s", openai.__version__)
-    except Exception as e:
-        logger.error(f"Failed to initialize OpenAI client: {str(e)}")
-        st.error("Failed to initialize OpenAI client. AI-driven features will be disabled.")
-        client = None
-
-# Global flag for AI availability
-AI_AVAILABLE = client is not None
+AI_AVAILABLE = False
 
 # Encryption Setup
 ENCRYPTION_KEY = Fernet.generate_key()
 cipher = Fernet(ENCRYPTION_KEY)
+
+# Function to initialize OpenAI client, preserving original logic
+def initialize_openai_client():
+    """Initialize the OpenAI client with API key from secrets or environment."""
+    global client, AI_AVAILABLE
+    api_key = None
+    try:
+        api_key = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OpenAI API key not found in secrets or environment variables.")
+        logger.info("Successfully loaded OPENAI_API_KEY")
+    except Exception as e:
+        logger.error(f"Failed to load OpenAI API key: {str(e)}")
+        st.error("OpenAI API key is missing. Please configure it in .streamlit/secrets.toml or as an environment variable to enable AI features.")
+
+    if api_key:
+        try:
+            http_client = httpx.Client(proxies=None)
+            client = OpenAI(api_key=api_key, http_client=http_client)
+            logger.info("OpenAI client initialized successfully with version: %s", openai.__version__)
+        except Exception as e:
+            logger.error(f"Failed to initialize OpenAI client: {str(e)}")
+            st.error("Failed to initialize OpenAI client. AI-driven features will be disabled.")
+            client = None
+
+    AI_AVAILABLE = client is not None
+    return client
 
 def encrypt_dataframe(df: pd.DataFrame) -> bytes:
     """Encrypt a DataFrame for secure storage."""
@@ -292,6 +297,9 @@ def get_cleaning_suggestions(df: pd.DataFrame) -> List[Tuple[str, str]]:
     username = st.session_state.get('username', 'anonymous')
     log_action(username, "Generated cleaning suggestions")
 
+    global client
+    if client is None:
+        client = initialize_openai_client()
     if not client:
         return [("Manual cleaning required", "Please configure a valid OpenAI API key to enable AI suggestions.")]
 
@@ -345,6 +353,9 @@ def get_insights(df: pd.DataFrame) -> List[str]:
     username = st.session_state.get('username', 'anonymous')
     log_action(username, "Generated insights")
 
+    global client
+    if client is None:
+        client = initialize_openai_client()
     if not client:
         return ["Please configure a valid OpenAI API key to enable AI-driven insights."]
 
@@ -422,6 +433,9 @@ def suggest_feature_engineering(df: pd.DataFrame) -> List[Tuple[str, str]]:
     username = st.session_state.get('username', 'anonymous')
     log_action(username, "Suggested feature engineering")
 
+    global client
+    if client is None:
+        client = initialize_openai_client()
     if not client:
         return [("Manual feature engineering required", "Please configure a valid OpenAI API key to enable AI suggestions.")]
 
@@ -863,6 +877,9 @@ def chat_with_gpt(df: pd.DataFrame, message: str, max_tokens: int = 100) -> str:
     username = st.session_state.get('username', 'anonymous')
     log_action(username, "Used AI chat assistant")
 
+    global client
+    if client is None:
+        client = initialize_openai_client()
     if not client:
         return "Please configure a valid OpenAI API key to enable AI chat features."
     
@@ -914,6 +931,9 @@ def suggest_workflow(df: pd.DataFrame) -> List[str]:
     username = st.session_state.get('username', 'anonymous')
     log_action(username, "Suggested workflow")
 
+    global client
+    if client is None:
+        client = initialize_openai_client()
     if not client:
         return ["Please configure a valid OpenAI API key for automated workflow suggestions."]
 
