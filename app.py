@@ -1,31 +1,39 @@
+import logging
+import os
+import pickle
+import uuid  # For generating session tokens
+from logging.handlers import RotatingFileHandler
+from typing import Optional
+
+import bcrypt
+import psycopg2
+import requests
 import streamlit as st
 import streamlit.components.v1 as components
-import psycopg2
-from psycopg2 import sql
-import uuid  # For generating session tokens
-import logging
-from logging.handlers import RotatingFileHandler
-import os
-from typing import Optional
-from ui import render_upload_page, render_clean_page, render_insights_page, render_predictive_page
-from visualizations import render_visualization_page
-from data_utils import chat_with_gpt, AI_AVAILABLE
-import pickle
-import bcrypt
 from authlib.integrations.requests_client import OAuth2Session
-import requests
-st.set_page_config(page_title="Data Toy", layout="wide", initial_sidebar_state="expanded")
+from psycopg2 import sql
+
+from data_utils import AI_AVAILABLE, chat_with_gpt
+from ui import (render_clean_page, render_insights_page,
+                render_predictive_page, render_upload_page)
+from visualizations import render_visualization_page
+
+st.set_page_config(
+    page_title="Data Toy",
+    layout="wide",
+    initial_sidebar_state="expanded")
 
 # Set up logging with rotation
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)  # Change to INFO for production
 if not logger.handlers:  # Avoid adding handlers multiple times
-    handler = RotatingFileHandler('app.log', maxBytes=5*1024*1024, backupCount=3)  # 5MB per file, keep 3 backups
-    handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    handler = RotatingFileHandler(
+        'app.log',
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3)  # 5MB per file, keep 3 backups
+    handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(handler)
-
-
-
 
 
 # Google OAuth Configuration
@@ -63,6 +71,8 @@ if 'session_token' not in st.session_state:
     st.session_state.session_token = None
 
 # Database connection using st.secrets
+
+
 def get_db_connection():
     try:
         return psycopg2.connect(
@@ -78,18 +88,21 @@ def get_db_connection():
         logger.error(f"Failed to connect to database: {str(e)}")
         return None
 
+
 def init_db():
     conn = get_db_connection()
     if conn is None:
-        st.error("Failed to initialize database. Please check your database connection settings.")
+        st.error(
+            "Failed to initialize database. Please check your database connection settings.")
         logger.error("Failed to initialize database due to connection failure")
         return
     c = conn.cursor()
     # Create users table
-    c.execute('''CREATE TABLE IF NOT EXISTS users 
+    c.execute('''CREATE TABLE IF NOT EXISTS users
                  (username TEXT PRIMARY KEY, email TEXT, name TEXT, password BYTEA, google_id TEXT, profile_picture TEXT)''')
     # Check if sessions table exists and has the correct schema
-    c.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'sessions')")
+    c.execute(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'sessions')")
     table_exists = c.fetchone()[0]
     if table_exists:
         # Check if session_token column exists
@@ -101,20 +114,24 @@ def init_db():
             logger.debug("Added session_token column to sessions table")
     else:
         # Create sessions table with session_token column
-        c.execute('''CREATE TABLE sessions 
+        c.execute('''CREATE TABLE sessions
                      (username TEXT PRIMARY KEY, session_token TEXT, session_data BYTEA)''')
         logger.debug("Created sessions table with session_token column")
     conn.commit()
     conn.close()
 
+
 # Call init_db at the start of the app to ensure the database is initialized
 init_db()
 
 # Restore authentication state on app startup using session token
+
+
 def restore_session():
     logger.debug("Starting restore_session")
     # Check for session token in query parameters
-    session_token = st.query_params.get('session_token', [None])[0]  # Updated for Streamlit query params
+    session_token = st.query_params.get('session_token', [None])[
+        0]  # Updated for Streamlit query params
     logger.debug(f"Session token from query params: {session_token}")
     if session_token:
         conn = get_db_connection()
@@ -123,23 +140,33 @@ def restore_session():
             return
         c = conn.cursor()
         try:
-            c.execute("SELECT username, session_data FROM sessions WHERE session_token = %s", (session_token,))
+            c.execute(
+                "SELECT username, session_data FROM sessions WHERE session_token = %s",
+                (session_token,
+                 ))
             result = c.fetchone()
             logger.debug(f"Database query result: {result}")
             if result:
                 username, session_data = result
                 session_data = pickle.loads(session_data)
                 # Restore authentication state
-                st.session_state.authenticated = session_data.get('authenticated', False)
+                st.session_state.authenticated = session_data.get(
+                    'authenticated', False)
                 st.session_state.username = username
-                st.session_state.user_info = session_data.get('user_info', None)
+                st.session_state.user_info = session_data.get(
+                    'user_info', None)
                 st.session_state.session_token = session_token
-                st.session_state.page = session_data.get('page', "Upload")  # Restore the page
+                st.session_state.page = session_data.get(
+                    'page', "Upload")  # Restore the page
                 # Restore other session state variables
                 for key, value in session_data.items():
-                    if key not in ['authenticated', 'username', 'user_info', 'session_token', 'page']:
+                    if key not in ['authenticated', 'username',
+                                   'user_info', 'session_token', 'page']:
                         st.session_state[key] = value
-                logger.info(f"Session restored for user {username}, authenticated: {st.session_state.authenticated}, page: {st.session_state.page}")
+                logger.info(
+                    f"Session restored for user {username}, authenticated: {
+                        st.session_state.authenticated}, page: {
+                        st.session_state.page}")
             else:
                 logger.debug("No session found for the given session token")
         except Exception as e:
@@ -150,13 +177,17 @@ def restore_session():
         logger.debug("No session token found in query parameters")
 
 # Save authentication state to the database with session token
+
+
 def save_auth_state():
     if st.session_state.username:
         logger.debug("Starting save_auth_state")
         # Generate a session token if it doesn't exist
         if not st.session_state.session_token:
             st.session_state.session_token = str(uuid.uuid4())
-            logger.debug(f"Generated new session token: {st.session_state.session_token}")
+            logger.debug(
+                f"Generated new session token: {
+                    st.session_state.session_token}")
         # Add session token to query parameters
         st.query_params['session_token'] = st.session_state.session_token
 
@@ -197,12 +228,16 @@ def save_auth_state():
         finally:
             conn.close()
 
+
 # Restore session on app startup
 restore_session()
 
-def add_user(username: str, email: str, name: str, password: str = None, google_id: str = None, profile_picture: str = None):
+
+def add_user(username: str, email: str, name: str, password: str = None,
+             google_id: str = None, profile_picture: str = None):
     """Add a new user to the database with a hashed password, Google ID, and profile picture."""
-    hashed_password = None if password is None else bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    hashed_password = None if password is None else bcrypt.hashpw(
+        password.encode('utf-8'), bcrypt.gensalt())
     conn = get_db_connection()
     if conn is None:
         return False
@@ -210,7 +245,8 @@ def add_user(username: str, email: str, name: str, password: str = None, google_
     try:
         c.execute(
             "INSERT INTO users (username, email, name, password, google_id, profile_picture) VALUES (%s, %s, %s, %s, %s, %s)",
-            (username, email, name, hashed_password if hashed_password is None else psycopg2.Binary(hashed_password), google_id, profile_picture)
+            (username, email, name, hashed_password if hashed_password is None else psycopg2.Binary(
+                hashed_password), google_id, profile_picture)
         )
         conn.commit()
     except psycopg2.IntegrityError:
@@ -218,6 +254,7 @@ def add_user(username: str, email: str, name: str, password: str = None, google_
         return False  # Username already exists
     conn.close()
     return True
+
 
 def verify_user(username: str, password: str) -> bool:
     """Verify user credentials."""
@@ -236,11 +273,13 @@ def verify_user(username: str, password: str) -> bool:
         # If stored_password is a memoryview (from BYTEA), convert to bytes
         if isinstance(stored_password, memoryview):
             stored_password = stored_password.tobytes()
-        # Fallback: if stored_password is a string (from old data), encode to bytes
+        # Fallback: if stored_password is a string (from old data), encode to
+        # bytes
         if isinstance(stored_password, str):
             stored_password = stored_password.encode('utf-8')
         return bcrypt.checkpw(password.encode('utf-8'), stored_password)
     return False
+
 
 def get_user_by_google_id(google_id: str):
     """Get user by Google ID."""
@@ -248,14 +287,19 @@ def get_user_by_google_id(google_id: str):
     if conn is None:
         return None
     c = conn.cursor()
-    c.execute("SELECT username, email, name, profile_picture FROM users WHERE google_id = %s", (google_id,))
+    c.execute(
+        "SELECT username, email, name, profile_picture FROM users WHERE google_id = %s",
+        (google_id,
+         ))
     result = c.fetchone()
     conn.close()
     return result
 
+
 def save_session(username):
     # Save the full session state, including authentication
     save_auth_state()
+
 
 def load_session(username):
     conn = get_db_connection()
@@ -268,10 +312,13 @@ def load_session(username):
     if result:
         session_data = pickle.loads(result[0])
         for key, value in session_data.items():
-            if key not in ['authenticated', 'username', 'user_info', 'session_token', 'page']:  # These are handled by restore_session
+            if key not in ['authenticated', 'username', 'user_info',
+                           'session_token', 'page']:  # These are handled by restore_session
                 st.session_state[key] = value
 
 # Load CSS with theme support
+
+
 def load_css(theme: str = "dark") -> None:
     """
     Load CSS styles and apply the appropriate theme class.
@@ -522,13 +569,15 @@ def load_css(theme: str = "dark") -> None:
             document.body.className = "{theme}-theme";
             console.log("Applied body class:", document.body.className);
             // Debugging: Apply a test style to confirm CSS injection
-            document.body.style.backgroundColor = "{ '#1C2526' if theme == 'dark' else '#F0F4F8' }";
+            document.body.style.backgroundColor = "{'#1C2526' if theme == 'dark' else '#F0F4F8'}";
         </script>
         """,
         height=0
     )
 
 # Function to render a custom header without the logo
+
+
 def render_custom_header(page_title: str) -> None:
     """
     Render a custom header with the page title.
@@ -538,23 +587,41 @@ def render_custom_header(page_title: str) -> None:
     """
     header = st.container()
     with header:
-        st.markdown(f"<h1 style='margin-top: 20px;'>{page_title}</h1>", unsafe_allow_html=True)
-    st.markdown("<hr style='border: 1px solid #FFD700;'>", unsafe_allow_html=True)
+        st.markdown(
+            f"<h1 style='margin-top: 20px;'>{page_title}</h1>",
+            unsafe_allow_html=True)
+    st.markdown(
+        "<hr style='border: 1px solid #FFD700;'>",
+        unsafe_allow_html=True)
 
 # Google OAuth Logic
+
+
 def get_google_auth_url():
-    client = OAuth2Session(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, redirect_uri=GOOGLE_REDIRECT_URI, scope=SCOPES)
+    client = OAuth2Session(
+        GOOGLE_CLIENT_ID,
+        GOOGLE_CLIENT_SECRET,
+        redirect_uri=GOOGLE_REDIRECT_URI,
+        scope=SCOPES)
     auth_url, state = client.create_authorization_url(GOOGLE_AUTH_URL)
     st.session_state['oauth_state'] = state
     return auth_url
 
+
 def handle_google_callback():
     try:
-        client = OAuth2Session(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, redirect_uri=GOOGLE_REDIRECT_URI, state=st.session_state.get('oauth_state'))
+        client = OAuth2Session(
+            GOOGLE_CLIENT_ID,
+            GOOGLE_CLIENT_SECRET,
+            redirect_uri=GOOGLE_REDIRECT_URI,
+            state=st.session_state.get('oauth_state'))
         # Updated for Streamlit query params (code is now a list)
         code = st.query_params.get('code', [None])[0]
         token = client.fetch_token(GOOGLE_TOKEN_URL, code=code)
-        user_info = requests.get(GOOGLE_USERINFO_URL, headers={'Authorization': f"Bearer {token['access_token']}"}).json()
+        user_info = requests.get(
+            GOOGLE_USERINFO_URL, headers={
+                'Authorization': f"Bearer {
+                    token['access_token']}"}).json()
         if 'error' in user_info:
             st.error(f"Google OAuth error: {user_info['error']}")
             return None
@@ -562,6 +629,7 @@ def handle_google_callback():
     except Exception as e:
         st.error(f"Error during Google OAuth callback: {str(e)}")
         return None
+
 
 # Authentication Logic
 if st.session_state.page == "Login":
@@ -576,7 +644,7 @@ if st.session_state.page == "Login":
         """,
         unsafe_allow_html=True
     )
-    
+
     username = st.text_input(
         "Username",
         placeholder="Enter your username",
@@ -635,7 +703,7 @@ if st.session_state.page == "Login":
         """,
         unsafe_allow_html=True
     )
-    
+
     # Login button with inline styles
     if st.button(
         "Login",
@@ -707,10 +775,16 @@ if st.session_state.page == "Login":
                 email = user_info['email']
                 name = user_info['name']
                 profile_picture = user_info.get('picture')
-                add_user(username, email, name, google_id=google_id, profile_picture=profile_picture)
+                add_user(
+                    username,
+                    email,
+                    name,
+                    google_id=google_id,
+                    profile_picture=profile_picture)
             st.session_state.authenticated = True
             st.session_state.username = username
-            st.session_state.user_info = user_info  # Store Google user info for profile picture
+            # Store Google user info for profile picture
+            st.session_state.user_info = user_info
             st.session_state.page = "Upload"
             load_session(username)
             save_auth_state()  # Save authentication state with session token
@@ -770,7 +844,7 @@ elif st.session_state.page == "Sign Up":
         """,
         unsafe_allow_html=True
     )
-    
+
     new_username = st.text_input(
         "New Username",
         placeholder="Choose a username",
@@ -883,7 +957,7 @@ elif st.session_state.page == "Sign Up":
         """,
         unsafe_allow_html=True
     )
-    
+
     if st.button(
         "Register",
         key="register_button",
@@ -920,7 +994,7 @@ elif st.session_state.page == "Sign Up":
         """,
         unsafe_allow_html=True
     )
-    
+
     if st.button(
         "Back to Login",
         key="back_to_login_button",
@@ -953,7 +1027,7 @@ elif st.session_state.page == "Sign Up":
         """,
         unsafe_allow_html=True
     )
-    
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 # Main App Logic (after authentication)
@@ -962,7 +1036,8 @@ if st.session_state.authenticated:
     load_css(st.session_state.theme)
 
     # Sidebar setup
-    def setup_sidebar(logo_path: str = "images/datatoy_logo.png") -> Optional[str]:
+    def setup_sidebar(
+            logo_path: str = "images/datatoy_logo.png") -> Optional[str]:
         """
         Set up the sidebar with logo, navigation, AI assistant, theme toggle, and additional links.
 
@@ -975,19 +1050,35 @@ if st.session_state.authenticated:
         try:
             st.sidebar.image(logo_path, use_column_width=True)
         except FileNotFoundError:
-            st.sidebar.markdown("**Data Toy** (Logo not found)", unsafe_allow_html=True)
-            st.sidebar.warning(f"Logo file '{logo_path}' not found. Please add it to the project directory.")
+            st.sidebar.markdown(
+                "**Data Toy** (Logo not found)",
+                unsafe_allow_html=True)
+            st.sidebar.warning(
+                f"Logo file '{logo_path}' not found. Please add it to the project directory.")
 
         # Display Google Profile Picture and Name if available
         if st.session_state.user_info and 'picture' in st.session_state.user_info:
-            st.sidebar.image(st.session_state.user_info['picture'], width=100, caption=f"Welcome, {st.session_state.user_info['name']}")
+            st.sidebar.image(
+                st.session_state.user_info['picture'],
+                width=100,
+                caption=f"Welcome, {
+                    st.session_state.user_info['name']}")
         else:
             st.sidebar.markdown(f"Welcome, {st.session_state.username}")
 
         st.sidebar.title("Navigation")
-        st.sidebar.markdown("<p class='tagline'>Transform your data with AI magic.</p>", unsafe_allow_html=True)
+        st.sidebar.markdown(
+            "<p class='tagline'>Transform your data with AI magic.</p>",
+            unsafe_allow_html=True)
 
-        page = st.sidebar.radio("Go to", ["Upload", "Clean", "Insights", "Visualize", "Predictive", "Share"], key="sidebar_page")
+        page = st.sidebar.radio("Go to",
+                                ["Upload",
+                                 "Clean",
+                                 "Insights",
+                                 "Visualize",
+                                 "Predictive",
+                                 "Share"],
+                                key="sidebar_page")
         if page != st.session_state.page:
             st.session_state.page = page
             save_auth_state()
@@ -995,7 +1086,9 @@ if st.session_state.authenticated:
 
         # Theme Toggle
         st.sidebar.subheader("Theme")
-        theme_choice = st.sidebar.selectbox("Select Theme", ["Dark", "Light"], index=0 if st.session_state.theme == "dark" else 1)
+        theme_choice = st.sidebar.selectbox(
+            "Select Theme", [
+                "Dark", "Light"], index=0 if st.session_state.theme == "dark" else 1)
         if theme_choice == "Dark" and st.session_state.theme != "dark":
             st.session_state.theme = "dark"
             save_auth_state()
@@ -1014,39 +1107,49 @@ if st.session_state.authenticated:
         st.sidebar.markdown(progress_text)
 
         if not AI_AVAILABLE:
-            st.sidebar.error("⚠️ AI features are disabled. Please configure an OPENAI_API_KEY in .streamlit/secrets.toml or as an environment variable.")
+            st.sidebar.error(
+                "⚠️ AI features are disabled. Please configure an OPENAI_API_KEY in .streamlit/secrets.toml or as an environment variable.")
 
         st.sidebar.subheader("AI Data Assistant")
         chat_container = st.sidebar.container()
         with chat_container:
             for message in st.session_state.chat_history:
                 with st.chat_message(message["role"]):
-                    st.write(f"**{message['role'].capitalize()}:** {message['content']}")
+                    st.write(
+                        f"**{message['role'].capitalize()}:** {message['content']}")
 
         chat_input = st.sidebar.chat_input("Ask Data Toy")
         if chat_input:
-            df = st.session_state.get('cleaned_df') if st.session_state.get('cleaned_df') is not None else st.session_state.get('df')
+            df = st.session_state.get('cleaned_df') if st.session_state.get(
+                'cleaned_df') is not None else st.session_state.get('df')
             if df is not None:
-                st.session_state.chat_history.append({"role": "user", "content": chat_input})
+                st.session_state.chat_history.append(
+                    {"role": "user", "content": chat_input})
                 with st.spinner("Processing your query..."):
                     response = chat_with_gpt(df, chat_input, max_tokens=100)
-                st.session_state.chat_history.append({"role": "assistant", "content": response})
+                st.session_state.chat_history.append(
+                    {"role": "assistant", "content": response})
                 save_auth_state()  # Save session state after chat interaction
                 st.rerun()
             else:
-                st.sidebar.warning("Please upload a dataset first to use the AI assistant.")
+                st.sidebar.warning(
+                    "Please upload a dataset first to use the AI assistant.")
 
         st.sidebar.markdown("---")
         st.sidebar.markdown("**Feedback**")
-        st.sidebar.markdown("Help us improve! [Share your feedback](https://docs.google.com/forms/d/e/1FAIpQLScpUFM0Y5_i5LJDM-HZEZEtOHbLHy4Vp-ek_-819MRZo7Q9rQ/viewform?usp=dialog)")
+        st.sidebar.markdown(
+            "Help us improve! [Share your feedback](https://docs.google.com/forms/d/e/1FAIpQLScpUFM0Y5_i5LJDM-HZEZEtOHbLHy4Vp-ek_-819MRZo7Q9rQ/viewform?usp=dialog)")
         st.sidebar.markdown("**Join Our Community**")
-        st.sidebar.markdown("Connect with others! [Join our Discord](https://discord.gg/your-invite-link)")
+        st.sidebar.markdown(
+            "Connect with others! [Join our Discord](https://discord.gg/your-invite-link)")
         st.sidebar.markdown("**Upgrade to Premium**")
-        st.sidebar.markdown("Unlock advanced features for $5/month! [Upgrade Now](https://stripe.com/your-checkout-link)")
+        st.sidebar.markdown(
+            "Unlock advanced features for $5/month! [Upgrade Now](https://stripe.com/your-checkout-link)")
 
         is_dev_mode = os.getenv("DEV_MODE") == "true"
         if is_dev_mode:
-            st.sidebar.info("Running in DEV_MODE: Unlimited AI suggestions enabled.")
+            st.sidebar.info(
+                "Running in DEV_MODE: Unlimited AI suggestions enabled.")
 
         # Logout Button
         if st.sidebar.button("Logout"):
@@ -1059,7 +1162,8 @@ if st.session_state.authenticated:
             conn = get_db_connection()
             if conn:
                 c = conn.cursor()
-                c.execute("DELETE FROM sessions WHERE username = %s", (st.session_state.username,))
+                c.execute("DELETE FROM sessions WHERE username = %s",
+                          (st.session_state.username,))
                 conn.commit()
                 conn.close()
             st.query_params.clear()  # Clear session token from query parameters
@@ -1096,22 +1200,29 @@ if st.session_state.authenticated:
             elif page == "Insights":
                 render_insights_page()
             elif page == "Visualize":
-                df = st.session_state.get('cleaned_df') if st.session_state.get('cleaned_df') is not None else st.session_state.get('df')
+                df = st.session_state.get('cleaned_df') if st.session_state.get(
+                    'cleaned_df') is not None else st.session_state.get('df')
                 if df is None:
-                    st.warning("Please upload a dataset first on the Upload page.")
+                    st.warning(
+                        "Please upload a dataset first on the Upload page.")
                 else:
                     render_visualization_page(df)
             elif page == "Predictive":
-                df = st.session_state.get('cleaned_df') if st.session_state.get('cleaned_df') is not None else st.session_state.get('df')
+                df = st.session_state.get('cleaned_df') if st.session_state.get(
+                    'cleaned_df') is not None else st.session_state.get('df')
                 if df is None:
-                    st.warning("Please upload a dataset first on the Upload page.")
+                    st.warning(
+                        "Please upload a dataset first on the Upload page.")
                 else:
                     render_predictive_page(df)
             elif page == "Share":
-                st.write("Sharing and collaboration features coming soon! Stay tuned.")
+                st.write(
+                    "Sharing and collaboration features coming soon! Stay tuned.")
                 st.session_state.progress["Share"] = "Done"
         except Exception as e:
-            st.error(f"An error occurred while rendering the {page} page: {str(e)}. Please try again or contact support.")
+            st.error(
+                f"An error occurred while rendering the {page} page: {
+                    str(e)}. Please try again or contact support.")
             st.session_state.progress[page] = "Failed"
 
         # Save session on every interaction

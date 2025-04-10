@@ -1,18 +1,20 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-from typing import Optional, Tuple, Dict, List
-import plotly.express as px
-import plotly.graph_objects as go
-from data_utils import train_ml_model, perform_clustering
-from sklearn.metrics import confusion_matrix, classification_report
-import xgboost as xgb
+from typing import Dict, List, Optional, Tuple
+
 import lightgbm as lgb
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, r2_score
 import lime
 import lime.lime_tabular
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
+import xgboost as xgb
+from sklearn.metrics import (accuracy_score, classification_report,
+                             confusion_matrix, r2_score)
+from sklearn.model_selection import train_test_split
+
+from data_utils import perform_clustering, train_ml_model
 
 # Optional SHAP import with fallback (no top-level Streamlit command)
 try:
@@ -20,6 +22,7 @@ try:
     SHAP_AVAILABLE = True
 except ImportError:
     SHAP_AVAILABLE = False
+
 
 def render_predictive_page(df: pd.DataFrame) -> None:
     """
@@ -30,7 +33,8 @@ def render_predictive_page(df: pd.DataFrame) -> None:
     """
     # Move the SHAP warning here
     if not SHAP_AVAILABLE:
-        st.warning("SHAP library not installed. Feature importance visualizations will be unavailable.")
+        st.warning(
+            "SHAP library not installed. Feature importance visualizations will be unavailable.")
 
     if df is None or df.empty:
         st.error("No dataset available. Please upload a dataset on the Upload page.")
@@ -42,17 +46,23 @@ def render_predictive_page(df: pd.DataFrame) -> None:
     # Model Training Section
     st.subheader("Train a Machine Learning Model")
     with st.expander("Model Training", expanded=True):
-        task_type = st.radio("Task Type", ["classification", "regression"], help="Choose the type of ML task.")
-        target_col = st.selectbox("Target Column", df.columns, help="Select the column to predict.")
-        feature_cols = st.multiselect("Feature Columns", [col for col in df.columns if col != target_col], 
-                                     help="Select columns to use as predictors.")
-        
-        model_type = st.selectbox("Model Type", ["RandomForest", "XGBoost", "LightGBM"], 
+        task_type = st.radio(
+            "Task Type", [
+                "classification", "regression"], help="Choose the type of ML task.")
+        target_col = st.selectbox(
+            "Target Column",
+            df.columns,
+            help="Select the column to predict.")
+        feature_cols = st.multiselect("Feature Columns", [col for col in df.columns if col != target_col],
+                                      help="Select columns to use as predictors.")
+
+        model_type = st.selectbox("Model Type", ["RandomForest", "XGBoost", "LightGBM"],
                                   help="Choose the ML model to train.")
-        
+
         if st.button("Train Model"):
             if not target_col or not feature_cols:
-                st.warning("Please select a target column and at least one feature column.")
+                st.warning(
+                    "Please select a target column and at least one feature column.")
             else:
                 with st.spinner("Training model... This may take a few minutes."):
                     progress_bar = st.progress(0)
@@ -67,10 +77,12 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                             elif i == 75:
                                 st.text("Finalizing model...")
                         # Manual model training
-                        model, score, explainer, shap_values, X_test = train_ml_model(df, target_col, feature_cols, task_type, model_type=model_type)
+                        model, score, explainer, shap_values, X_test = train_ml_model(
+                            df, target_col, feature_cols, task_type, model_type=model_type)
 
                         if model is None:
-                            st.error("Model training failed. Please check the dataset and try again.")
+                            st.error(
+                                "Model training failed. Please check the dataset and try again.")
                         else:
                             st.session_state['model'] = model
                             st.session_state['explainer'] = explainer
@@ -78,35 +90,51 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                             st.session_state['X_test'] = X_test
                             st.session_state['feature_cols'] = feature_cols
                             st.session_state['task_type'] = task_type
-                            st.success(f"Model trained successfully! {task_type.capitalize()} score: {score:.2f}")
-                            
+                            st.success(
+                                f"Model trained successfully! {
+                                    task_type.capitalize()} score: {
+                                    score:.2f}")
+
                             # Fairness Metrics
                             if task_type == "classification":
                                 st.subheader("Fairness Metrics")
-                                y_test = df.loc[X_test.index, target_col]  # Corrected to use target_col from df
+                                # Corrected to use target_col from df
+                                y_test = df.loc[X_test.index, target_col]
                                 y_pred = model.predict(X_test)
-                                # Compute confusion matrix and classification report
+                                # Compute confusion matrix and classification
+                                # report
                                 cm = confusion_matrix(y_test, y_pred)
-                                fig_cm = px.imshow(cm, text_auto=True, title="Confusion Matrix")
-                                st.plotly_chart(fig_cm, use_container_width=True)
+                                fig_cm = px.imshow(
+                                    cm, text_auto=True, title="Confusion Matrix")
+                                st.plotly_chart(
+                                    fig_cm, use_container_width=True)
                                 st.write("Classification Report:")
                                 st.text(classification_report(y_test, y_pred))
-                                # Demographic parity (simplified, assuming binary classification and a sensitive attribute)
+                                # Demographic parity (simplified, assuming
+                                # binary classification and a sensitive
+                                # attribute)
                                 if "gender" in df.columns:  # Example sensitive attribute
                                     sensitive_attr = df.loc[X_test.index, "gender"]
-                                    pred_df = pd.DataFrame({'prediction': y_pred, 'gender': sensitive_attr})
-                                    parity = pred_df.groupby('gender')['prediction'].mean()
-                                    st.write("Demographic Parity (Prediction Rates by Gender):")
+                                    pred_df = pd.DataFrame(
+                                        {'prediction': y_pred, 'gender': sensitive_attr})
+                                    parity = pred_df.groupby(
+                                        'gender')['prediction'].mean()
+                                    st.write(
+                                        "Demographic Parity (Prediction Rates by Gender):")
                                     st.write(parity)
                                     if abs(parity.diff().iloc[-1]) > 0.1:
-                                        st.warning("Potential fairness issue: Prediction rates differ significantly across groups.")
+                                        st.warning(
+                                            "Potential fairness issue: Prediction rates differ significantly across groups.")
                     except Exception as e:
-                        st.error(f"Error during model training: {str(e)}. Please ensure the selected columns are valid.")
+                        st.error(
+                            f"Error during model training: {
+                                str(e)}. Please ensure the selected columns are valid.")
                     finally:
                         progress_bar.empty()
 
     # SHAP Visualization Section
-    if 'model' in st.session_state and SHAP_AVAILABLE and st.session_state.get('explainer') is not None:
+    if 'model' in st.session_state and SHAP_AVAILABLE and st.session_state.get(
+            'explainer') is not None:
         st.subheader("Feature Importance (SHAP)")
         with st.expander("SHAP Visualizations", expanded=True):
             try:
@@ -122,7 +150,9 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                     x=mean_shap.values,
                     y=mean_shap.index,
                     orientation='h',
-                    labels={'x': 'Mean |SHAP Value| (Impact on Model Output)', 'y': 'Feature'},
+                    labels={
+                        'x': 'Mean |SHAP Value| (Impact on Model Output)',
+                        'y': 'Feature'},
                     title="Feature Importance (Mean |SHAP Value|)",
                     color=mean_shap.values,
                     color_continuous_scale='Viridis'
@@ -138,7 +168,8 @@ def render_predictive_page(df: pd.DataFrame) -> None:
 
                 # Interactive Force Plot for a single prediction
                 st.write("### Individual Prediction Explanation")
-                sample_idx = st.slider("Select a sample to explain", 0, len(X_test) - 1, 0)
+                sample_idx = st.slider(
+                    "Select a sample to explain", 0, len(X_test) - 1, 0)
                 shap.initjs()
                 force_plot = shap.force_plot(
                     st.session_state['explainer'].expected_value,
@@ -150,7 +181,9 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                 st_shap(force_plot, height=200)
 
             except Exception as e:
-                st.error(f"Error generating SHAP visualizations: {str(e)}. Please ensure SHAP is properly configured.")
+                st.error(
+                    f"Error generating SHAP visualizations: {
+                        str(e)}. Please ensure SHAP is properly configured.")
 
     # LIME Visualization Section
     if 'model' in st.session_state:
@@ -166,12 +199,14 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                 lime_explainer = lime.lime_tabular.LimeTabularExplainer(
                     X_test.values,
                     feature_names=feature_cols,
-                    class_names=[str(i) for i in range(len(np.unique(df[target_col]))) if task_type == "classification"],
+                    class_names=[str(i) for i in range(
+                        len(np.unique(df[target_col]))) if task_type == "classification"],
                     mode="classification" if task_type == "classification" else "regression"
                 )
 
                 # Select a sample to explain
-                sample_idx = st.slider("Select a sample to explain (LIME)", 0, len(X_test) - 1, 0)
+                sample_idx = st.slider(
+                    "Select a sample to explain (LIME)", 0, len(X_test) - 1, 0)
                 instance = X_test.iloc[sample_idx].values
 
                 # Generate LIME explanation
@@ -195,37 +230,50 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                 st.pyplot(fig)
 
             except Exception as e:
-                st.error(f"Error generating LIME explanations: {str(e)}. Please ensure the model and data are compatible.")
+                st.error(
+                    f"Error generating LIME explanations: {
+                        str(e)}. Please ensure the model and data are compatible.")
 
     # Clustering Section
     st.subheader("Clustering Results")
     with st.expander("Clustering", expanded=True):
-        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
-        cluster_cols = st.multiselect("Select columns for clustering", numeric_cols, 
-                                     help="Select at least two numerical columns for clustering.")
-        n_clusters = st.slider("Number of clusters", 2, 10, 3, help="Choose the number of clusters to form.")
-        
+        numeric_cols = df.select_dtypes(
+            include=['int64', 'float64']).columns.tolist()
+        cluster_cols = st.multiselect("Select columns for clustering", numeric_cols,
+                                      help="Select at least two numerical columns for clustering.")
+        n_clusters = st.slider(
+            "Number of clusters",
+            2,
+            10,
+            3,
+            help="Choose the number of clusters to form.")
+
         if st.button("Run Clustering"):
             if len(cluster_cols) < 2:
-                st.warning("Please select at least two columns for clustering.")
+                st.warning(
+                    "Please select at least two columns for clustering.")
             else:
                 with st.spinner("Performing clustering..."):
                     try:
-                        labels = perform_clustering(df, cluster_cols, n_clusters)
+                        labels = perform_clustering(
+                            df, cluster_cols, n_clusters)
                         df['Cluster'] = labels
                         st.session_state['cleaned_df'] = df
                         st.session_state['clustering_labels'] = labels
                         st.session_state['cluster_cols'] = cluster_cols
                         st.success("Clustering completed successfully!")
                     except Exception as e:
-                        st.error(f"Error performing clustering: {str(e)}. Please ensure the selected columns contain valid numerical data.")
+                        st.error(
+                            f"Error performing clustering: {
+                                str(e)}. Please ensure the selected columns contain valid numerical data.")
 
         # Interactive Clustering Visualization
-        if 'clustering_labels' in st.session_state and st.session_state['clustering_labels'] is not None:
+        if 'clustering_labels' in st.session_state and st.session_state[
+                'clustering_labels'] is not None:
             try:
                 cluster_cols = st.session_state['cluster_cols']
                 labels = st.session_state['clustering_labels']
-                
+
                 if len(cluster_cols) >= 2:
                     # 2D Scatter Plot
                     fig_2d = px.scatter(
@@ -262,9 +310,15 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                             xaxis_title=cluster_cols[0],
                             yaxis_title=cluster_cols[1],
                             zaxis_title=cluster_cols[2],
-                            xaxis=dict(backgroundcolor="rgba(0,0,0,0)", gridcolor="white"),
-                            yaxis=dict(backgroundcolor="rgba(0,0,0,0)", gridcolor="white"),
-                            zaxis=dict(backgroundcolor="rgba(0,0,0,0)", gridcolor="white")
+                            xaxis=dict(
+                                backgroundcolor="rgba(0,0,0,0)",
+                                gridcolor="white"),
+                            yaxis=dict(
+                                backgroundcolor="rgba(0,0,0,0)",
+                                gridcolor="white"),
+                            zaxis=dict(
+                                backgroundcolor="rgba(0,0,0,0)",
+                                gridcolor="white")
                         ),
                         plot_bgcolor='rgba(0,0,0,0)',
                         paper_bgcolor='rgba(0,0,0,0)',
@@ -293,11 +347,15 @@ def render_predictive_page(df: pd.DataFrame) -> None:
                 st.plotly_chart(fig_dist, use_container_width=True)
 
             except Exception as e:
-                st.error(f"Error generating clustering visualizations: {str(e)}. Please try different columns or check the data.")
+                st.error(
+                    f"Error generating clustering visualizations: {
+                        str(e)}. Please try different columns or check the data.")
 
     st.session_state.progress["Predictive"] = "Done"
 
 # Helper function to render SHAP plots in Streamlit
+
+
 def st_shap(plot, height: Optional[int] = None) -> None:
     """
     Render SHAP plots in Streamlit.
