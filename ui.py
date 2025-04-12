@@ -799,6 +799,7 @@ def render_clean_page() -> None:
                 "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "logs": ["Undid last cleaning operation"]
             })
+            display_cleaned_dataset(st.session_state.cleaned_df)
             st.rerun()
 
     with col2:
@@ -817,6 +818,7 @@ def render_clean_page() -> None:
                 "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "logs": ["Redid last cleaning operation"]
             })
+            display_cleaned_dataset(st.session_state.cleaned_df)
             st.rerun()
 
     with st.expander("Cleaning History", expanded=False):
