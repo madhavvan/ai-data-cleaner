@@ -5,7 +5,6 @@ import os
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from typing import Dict, List, Optional, Tuple
-from collections import deque
 import pandas as pd
 import pyarrow.parquet as pq  # For Parquet file support
 import streamlit as st
@@ -259,16 +258,8 @@ def render_upload_page() -> None:
             st.session_state.progress["Upload"] = "Failed"
 
 
-
-
 def render_clean_page() -> None:
     st.title("Clean Your Dataset")
-    # Debug: Check session state
-    st.write("Debug: Is cleaned_df None?", st.session_state.cleaned_df is None)
-    logger.debug("render_clean_page: cleaned_df is None: %s, shape: %s",
-                 st.session_state.cleaned_df is None,
-                 st.session_state.cleaned_df.shape if st.session_state.cleaned_df is not None else "N/A")
-
     if 'df' not in st.session_state or st.session_state.df is None:
         st.warning("Please upload a dataset first on the Upload page.")
         return
@@ -283,10 +274,6 @@ def render_clean_page() -> None:
 
     st.session_state.progress["Clean"] = "In Progress"
 
-    # Initialize cleaning_history as deque if not present
-    if 'cleaning_history' not in st.session_state:
-        st.session_state.cleaning_history = deque(maxlen=5)
-
     st.subheader("Your Progress")
     progress_text = ""
     for step, status in st.session_state.progress.items():
@@ -294,13 +281,11 @@ def render_clean_page() -> None:
         progress_text += f"{emoji} {step}: {status}\n"
     st.markdown(progress_text)
 
-    if not st.session_state.suggestions or id(st.session_state.cleaned_df) != id(df):
+    if not st.session_state.suggestions or id(
+            st.session_state.cleaned_df) != id(df):
         with st.spinner("Generating AI cleaning suggestions..."):
-            try:
-                st.session_state.suggestions = get_cached_suggestions(df[available_columns])
-            except Exception as e:
-                st.error(f"Error generating suggestions: {str(e)}")
-                logger.error(f"Error in get_cached_suggestions: {str(e)}")
+            st.session_state.suggestions = get_cached_suggestions(
+                df[available_columns])
 
     st.subheader("Dataset Health")
     score = calculate_health_score(df)
@@ -322,10 +307,8 @@ def render_clean_page() -> None:
                 cleaned_df, logs = apply_cleaning_operations(
                     df, st.session_state.suggestions, [], {}, "", "", "", [], "", auto_clean=True
                 )
-                if cleaned_df is None or cleaned_df.empty:
-                    st.error("Smart Workflow resulted in an invalid dataset.")
-                    return
-                st.session_state.cleaning_history.append((df.copy(), st.session_state.logs.copy(), "Smart Workflow"))
+                st.session_state.previous_states.append(
+                    (df.copy(), st.session_state.logs.copy()))
                 st.session_state.cleaned_df = cleaned_df
                 st.session_state.logs = logs
                 st.session_state.redo_states = []
@@ -342,7 +325,6 @@ def render_clean_page() -> None:
                 save_auth_state()
             except Exception as e:
                 st.error(f"Error executing smart workflow: {str(e)}")
-                logger.error(f"Error in smart workflow: {str(e)}")
                 st.session_state.progress["Clean"] = "Failed"
 
     with st.form(key="cleaning_form", clear_on_submit=False):
@@ -399,18 +381,25 @@ def render_clean_page() -> None:
                     with st.container():
                         st.write(f"**Rule {i + 1}**")
                         rule_col = st.selectbox(
-                            f"Select column for Rule {i + 1}", available_columns, key=f"rule_col_{i}")
+                            f"Select column for Rule {
+                                i + 1}", available_columns, key=f"rule_col_{i}")
                         condition = st.selectbox(
-                            f"Condition for Rule {i + 1}",
-                            ["greater than", "less than", "equal to"],
+                            f"Condition for Rule {
+                                i + 1}",
+                            [
+                                "greater than",
+                                "less than",
+                                "equal to"],
                             key=f"rule_cond_{i}")
                         threshold = st.number_input(
-                            f"Threshold for Rule {i + 1}", value=0.0, key=f"rule_threshold_{i}")
+                            f"Threshold for Rule {
+                                i + 1}", value=0.0, key=f"rule_threshold_{i}")
                         action = st.selectbox(
                             f"Action for Rule {i + 1}", ["Set to NaN", "Set to Value"], key=f"rule_action_{i}")
                         if action == "Set to Value":
                             action_value = st.number_input(
-                                f"Set Value for Rule {i + 1}", value=0.0, key=f"rule_action_value_{i}")
+                                f"Set Value for Rule {
+                                    i + 1}", value=0.0, key=f"rule_action_value_{i}")
                         else:
                             action_value = None
                         custom_rules.append({
@@ -423,12 +412,13 @@ def render_clean_page() -> None:
 
         with replace_container:
             with st.expander("Custom Value Replacement", expanded=False):
-                st.markdown("**Replace unwanted values (e.g., '?' for missing data)**")
+                st.markdown(
+                    "**Replace unwanted values (e.g., '?' for missing data)**")
                 st.markdown(
                     '<span title="Replace specific values across selected columns">ℹ️</span>',
                     unsafe_allow_html=True)
                 replace_value = st.text_input(
-                    "Value to Replace",
+                    "Value to Replace",  # Non-empty label
                     value="",
                     help="Enter the value you want to replace (e.g., ?, 999, Unknown)",
                     key="replace_value"
@@ -491,19 +481,23 @@ def render_clean_page() -> None:
                     key="enrich_api_key"
                 )
                 if enrich_col != "None" and not enrich_api_key:
-                    st.warning("Google API Key is required for data enrichment.")
+                    st.warning(
+                        "Google API Key is required for data enrichment.")
 
         with ai_container:
             with st.expander("AI Cleaning Suggestions", expanded=True):
                 st.markdown(
                     '<span title="AI-driven suggestions to automate data cleaning">ℹ️</span>',
                     unsafe_allow_html=True)
-                for idx, (suggestion, explanation) in enumerate(st.session_state.suggestions):
+                for idx, (suggestion, explanation) in enumerate(
+                        st.session_state.suggestions):
                     if "Based on the provided dataset analysis" in suggestion:
                         st.markdown(f"{suggestion} - {explanation}")
                     else:
-                        if st.checkbox(f"{suggestion}", key=f"suggestion_{suggestion}_{idx}"):
-                            selected_suggestions.append((suggestion, explanation))
+                        if st.checkbox(f"{suggestion}",
+                                       key=f"suggestion_{suggestion}_{idx}"):
+                            selected_suggestions.append(
+                                (suggestion, explanation))
                             st.session_state.ai_suggestions_used += 1
                             st.markdown(f"Explanation: {explanation}")
                             if "Handle special characters" in suggestion:
@@ -514,7 +508,8 @@ def render_clean_page() -> None:
                                 )
                             elif "Fill missing values" in suggestion:
                                 col = extract_column(suggestion)
-                                if col and col in available_columns and df[col].dtype in ['int64', 'float64']:
+                                if col and col in available_columns and df[col].dtype in [
+                                        'int64', 'float64']:
                                     options[f"fill_{col}"] = st.radio(
                                         f"Fill method for {col}",
                                         ["mean", "median", "mode"],
@@ -551,7 +546,8 @@ def render_clean_page() -> None:
                 if anomaly_cols:
                     with st.spinner("Detecting anomalies..."):
                         try:
-                            anomalies = detect_anomalies(df[available_columns], anomaly_cols, contamination)
+                            anomalies = detect_anomalies(
+                                df[available_columns], anomaly_cols, contamination)
                             st.write("Anomalies Detected:")
                             st.json(anomalies)
                         except Exception as e:
@@ -579,7 +575,8 @@ def render_clean_page() -> None:
                     help="Generate a prediction app",
                     key="train_ml")
                 if train_ml and not (target_col and feature_cols):
-                    st.warning("Please select a target column and at least one feature column for ML deployment.")
+                    st.warning(
+                        "Please select a target column and at least one feature column for ML deployment.")
 
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
@@ -602,15 +599,18 @@ def render_clean_page() -> None:
             custom_rules
         )
         if not operations_selected:
-            st.warning("Please select at least one cleaning operation, custom rule, or ML deployment with valid parameters.")
+            st.warning(
+                "Please select at least one cleaning operation, custom rule, or ML deployment with valid parameters.")
         else:
             with st.spinner("Processing cleaning operations..."):
                 try:
                     if replace_value.strip() and replace_with:
                         if replace_with == "Custom" and not replace_with.strip():
-                            st.error("Please provide a custom replacement value.")
+                            st.error(
+                                "Please provide a custom replacement value.")
                             return
-                        if replace_scope not in ["All columns", "Numeric columns", "Categorical columns"]:
+                        if replace_scope not in [
+                                "All columns", "Numeric columns", "Categorical columns"]:
                             st.error("Invalid replacement scope selected.")
                             return
 
@@ -645,43 +645,35 @@ def render_clean_page() -> None:
                                 cleaned_df.loc[mask, col] = action_value
 
                             logs.append(
-                                f"Applied custom rule on {col}: {condition} {threshold}, {action} {'NaN' if action == 'Set to NaN' else action_value}")
+                                f"Applied custom rule on {col}: {condition} {threshold}, {action} {
+                                    'NaN' if action == 'Set to NaN' else action_value}")
 
                     if preview_button:
                         st.subheader("Preview of Changes")
                         st.write("Before:")
                         st.dataframe(df.head(10), use_container_width=True)
                         st.write("After:")
-                        st.dataframe(cleaned_df.head(10), use_container_width=True)
+                        st.dataframe(
+                            cleaned_df.head(10),
+                            use_container_width=True)
                         st.write("Preview Logs:")
                         for log in logs:
                             st.write(f"- {log}")
-                        # Ensure full dataset is shown after preview
-                        if st.session_state.cleaned_df is not None:
-                            display_cleaned_dataset(st.session_state.cleaned_df)
 
                     if apply_button or auto_clean_button:
-                        if cleaned_df is None or cleaned_df.empty:
-                            st.error("Cleaning operation resulted in an invalid dataset.")
-                            return
-                        summary = f"Step {len(st.session_state.cleaning_history) + 1}: "
-                        if columns_to_drop:
-                            summary += f"Dropped {', '.join(columns_to_drop)}, "
-                        if replace_value:
-                            summary += f"Replaced '{replace_value}' with '{replace_with}', "
-                        if selected_suggestions:
-                            summary += f"Applied {len(selected_suggestions)} AI suggestions"
-                        if custom_rules:
-                            summary += f"Applied {len(custom_rules)} custom rules"
-                        summary = summary.strip(", ")
-                        st.session_state.cleaning_history.append((df.copy(), st.session_state.logs.copy(), summary))
+                        st.session_state.previous_states.append(
+                            (df.copy(), st.session_state.logs.copy()))
+                        if len(st.session_state.previous_states) > 5:
+                            st.session_state.previous_states.pop(0)
+                        st.session_state.redo_states = []
                         st.session_state.cleaned_df = cleaned_df
                         st.session_state.logs = logs
                         if columns_to_drop:
-                            st.session_state.dropped_columns.extend(columns_to_drop)
+                            st.session_state.dropped_columns.extend(
+                                columns_to_drop)
                         st.session_state.cleaning_history.append({
                             "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                            "logs": logs + [summary]
+                            "logs": logs
                         })
                         st.session_state.suggestions = get_cached_suggestions(
                             cleaned_df[[col for col in cleaned_df.columns if col not in st.session_state.dropped_columns]])
@@ -690,10 +682,11 @@ def render_clean_page() -> None:
                         display_cleaned_dataset(st.session_state.cleaned_df)
                         from app import save_auth_state
                         save_auth_state()
-
                 except Exception as e:
                     st.error(f"Error processing cleaning operations: {str(e)}")
-                    logger.error(f"Error in apply_cleaning_operations: {str(e)}")
+                    logger.error(
+                        f"Error in apply_cleaning_operations: {
+                            str(e)}")
                     st.session_state.progress["Clean"] = "Failed"
 
     with st.expander("Save/Apply Cleaning Templates", expanded=False):
@@ -733,7 +726,9 @@ def render_clean_page() -> None:
             with st.form(key="apply_template_form"):
                 template_to_apply = st.selectbox(
                     "Apply Saved Template",
-                    ["None"] + list(st.session_state.cleaning_templates.keys()),
+                    ["None"] +
+                    list(
+                        st.session_state.cleaning_templates.keys()),
                     key="apply_template")
                 apply_template_button = st.form_submit_button("Apply Template")
 
@@ -758,85 +753,81 @@ def render_clean_page() -> None:
                                 target_col=template["target_col"],
                                 feature_cols=template["feature_cols"]
                             )
-                            if cleaned_df is None or cleaned_df.empty:
-                                st.error("Template application resulted in an invalid dataset.")
-                                return
-                            summary = f"Step {len(st.session_state.cleaning_history) + 1}: Applied template '{template_to_apply}'"
-                            st.session_state.cleaning_history.append((df.copy(), st.session_state.logs.copy(), summary))
+                            st.session_state.previous_states.append(
+                                (df.copy(), st.session_state.logs.copy()))
+                            if len(st.session_state.previous_states) > 5:
+                                st.session_state.previous_states.pop(0)
+                            st.session_state.redo_states = []
                             st.session_state.cleaned_df = cleaned_df
                             st.session_state.logs = logs
                             if template["columns_to_drop"]:
-                                st.session_state.dropped_columns.extend(template["columns_to_drop"])
+                                st.session_state.dropped_columns.extend(
+                                    template["columns_to_drop"])
                             st.session_state.cleaning_history.append({
                                 "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                "logs": logs + [summary]
+                                "logs": logs + [f"Applied template '{template_to_apply}'"]
                             })
                             st.session_state.suggestions = get_cached_suggestions(
                                 cleaned_df[[col for col in cleaned_df.columns if col not in st.session_state.dropped_columns]])
-                            st.success(f"Applied template '{template_to_apply}'")
+                            st.success(
+                                f"Applied template '{template_to_apply}'")
                             st.session_state.progress["Clean"] = "Done"
-                            display_cleaned_dataset(st.session_state.cleaned_df)
+                            display_cleaned_dataset(
+                                st.session_state.cleaned_df)
                             from app import save_auth_state
                             save_auth_state()
                         except Exception as e:
                             st.error(f"Error applying template: {str(e)}")
                             st.session_state.progress["Clean"] = "Failed"
 
-    # Undo/Redo Logic
     col1, col2 = st.columns(2)
     with col1:
-        if st.session_state.cleaning_history:
-            with st.expander("Undo History", expanded=False):
-                history_options = [step[2] for step in st.session_state.cleaning_history]
-                selected_step = st.selectbox("Select a step to revert to", history_options)
-                if st.button("Undo to Selected Step", help="Revert to selected step"):
-                    for i, (state, logs, summary) in enumerate(st.session_state.cleaning_history):
-                        if summary == selected_step:
-                            st.session_state.cleaning_history = deque(list(st.session_state.cleaning_history)[:i+1], maxlen=5)
-                            st.session_state.cleaned_df = state if state is not None else df.copy()
-                            st.session_state.logs = logs
-                            st.session_state.suggestions = get_cached_suggestions(
-                                st.session_state.cleaned_df[[col for col in st.session_state.cleaned_df.columns if col not in st.session_state.dropped_columns]])
-                            st.session_state.cleaning_history.append({
-                                "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                "logs": ["Reverted to step: " + summary]
-                            })
-                            st.success(f"Reverted to '{summary}'")
-                            display_cleaned_dataset(st.session_state.cleaned_df)
-                            from app import save_auth_state
-                            save_auth_state()
-                            break
+        if st.session_state.previous_states and st.button(
+                "Undo Last Cleaning", help="Revert to the previous state"):
+            current_state = (
+                st.session_state.cleaned_df.copy(),
+                st.session_state.logs.copy())
+            st.session_state.redo_states.append(current_state)
+            if len(st.session_state.redo_states) > 5:
+                st.session_state.redo_states.pop(0)
+            previous_df, previous_logs = st.session_state.previous_states.pop()
+            st.session_state.cleaned_df = previous_df
+            st.session_state.logs = previous_logs
+            st.session_state.suggestions = get_cached_suggestions(
+                previous_df[[col for col in previous_df.columns if col not in st.session_state.dropped_columns]])
+            st.session_state.cleaning_history.append({
+                "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "logs": ["Undid last cleaning operation"]
+            })
+            display_cleaned_dataset(st.session_state.cleaned_df)
+            st.rerun()
 
     with col2:
-        if st.session_state.redo_states and st.button("Redo Last Cleaning", help="Reapply the last undone state"):
+        if st.session_state.redo_states and st.button(
+                "Redo Last Cleaning", help="Reapply the last undone state"):
+            st.session_state.previous_states.append(
+                (st.session_state.cleaned_df.copy(), st.session_state.logs.copy()))
+            if len(st.session_state.previous_states) > 5:
+                st.session_state.previous_states.pop(0)
             redo_df, redo_logs = st.session_state.redo_states.pop()
-            if redo_df is not None and not redo_df.empty:
-                summary = "Redid last cleaning operation"
-                st.session_state.cleaning_history.append((st.session_state.cleaned_df.copy(), st.session_state.logs.copy(), summary))
-                st.session_state.cleaned_df = redo_df
-                st.session_state.logs = redo_logs
-                st.session_state.suggestions = get_cached_suggestions(
-                    redo_df[[col for col in redo_df.columns if col not in st.session_state.dropped_columns]])
-                st.session_state.cleaning_history.append({
-                    "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    "logs": [summary]
-                })
-                st.success("Redid last cleaning operation")
-                display_cleaned_dataset(st.session_state.cleaned_df)
-                from app import save_auth_state
-                save_auth_state()
+            st.session_state.cleaned_df = redo_df
+            st.session_state.logs = redo_logs
+            st.session_state.suggestions = get_cached_suggestions(
+                redo_df[[col for col in redo_df.columns if col not in st.session_state.dropped_columns]])
+            st.session_state.cleaning_history.append({
+                "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "logs": ["Redid last cleaning operation"]
+            })
+            display_cleaned_dataset(st.session_state.cleaned_df)
+            st.rerun()
 
     with st.expander("Cleaning History", expanded=False):
         st.subheader("Cleaning History")
         if st.session_state.cleaning_history:
             for entry in st.session_state.cleaning_history:
-                if isinstance(entry, dict):  # Handle legacy dict entries
-                    st.write(f"**{entry['timestamp']}**")
-                    for log in entry['logs']:
-                        st.write(f"- {log}")
-                else:  # Handle new tuple entries
-                    _, _, summary = entry
-                    st.write(f"**{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}**: {summary}")
+                st.write(f"**{entry['timestamp']}**")
+                for log in entry['logs']:
+                    st.write(f"- {log}")
         else:
             st.write("No cleaning operations have been performed yet.")
 
@@ -848,18 +839,17 @@ def render_clean_page() -> None:
         if st.session_state.cleaned_df is not None:
             export_button = st.button("Export Cleaned Dataset for Tableau")
             if export_button:
-                filename = f"cleaned_for_tableau_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                filename = f"cleaned_for_tableau_{
+                    datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
                 st.markdown(
-                    get_download_link(st.session_state.cleaned_df, filename),
+                    get_download_link(
+                        st.session_state.cleaned_df,
+                        filename),
                     unsafe_allow_html=True)
-                st.info("Download the CSV and import it into Tableau Public or Desktop to create visualizations!")
-
-    # Persistent Display
-    if st.session_state.cleaned_df is not None:
-        st.write("Debug: Displaying cleaned_df, shape:", st.session_state.cleaned_df.shape)
-        display_cleaned_dataset(st.session_state.cleaned_df)
-    else:
-        st.write("Debug: cleaned_df is None, cannot display")
+                st.info(
+                    "Download the CSV and import it into Tableau Public or Desktop to create visualizations!")
+        if st.session_state.cleaned_df is not None:
+            display_cleaned_dataset(st.session_state.cleaned_df)
 
 def render_insights_page() -> None:
     st.title("Insights Dashboard")
