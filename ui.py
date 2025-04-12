@@ -5,11 +5,9 @@ import os
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from typing import Dict, List, Optional, Tuple
-
 import pandas as pd
 import pyarrow.parquet as pq  # For Parquet file support
 import streamlit as st
-
 from data_utils import (analyze_time_series, apply_cleaning_operations,
                         calculate_health_score, chat_with_gpt,
                         detect_anomalies, extract_column, forecast_time_series,
@@ -103,27 +101,14 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
         st.warning("No cleaned dataset available to display.")
         return
 
-    if st.session_state.cleaned_df is not None:
-        st.subheader("Cleaned Dataset Preview")
-        view_option = st.radio(
-            "View dataset as:",
-            ("First 10 Rows", "Full Dataset"),
-            horizontal=True)
-        if view_option == "First 10 Rows":
-            st.dataframe(st.session_state.cleaned_df.head(10))
-        else:
-            st.dataframe(st.session_state.cleaned_df, use_container_width=True, height=600)
-
     try:
+        st.subheader("Cleaned Dataset")
         st.write(f"Dataset size: {cleaned_df.shape}")
-        if view_option == "First 10 Rows":
-            st.dataframe(cleaned_df.head(10), use_container_width=True)
+        if len(cleaned_df) > 1000:
+            st.warning(f"Dataset has {len(cleaned_df)} rows. Displaying first 1000 rows to avoid performance issues.")
+            st.dataframe(cleaned_df.head(1000), use_container_width=True)
         else:
-            if len(cleaned_df) > 1000:
-                st.warning(f"Dataset has {len(cleaned_df)} rows. Displaying first 1000 rows to avoid performance issues.")
-                st.dataframe(cleaned_df.head(1000), use_container_width=True)
-            else:
-                st.dataframe(cleaned_df, use_container_width=True)
+            st.dataframe(cleaned_df, use_container_width=True)
     except Exception as e:
         st.error(f"Error displaying dataset: {str(e)}")
 
@@ -861,7 +846,8 @@ def render_clean_page() -> None:
                     unsafe_allow_html=True)
                 st.info(
                     "Download the CSV and import it into Tableau Public or Desktop to create visualizations!")
-
+        if st.session_state.cleaned_df is not None:
+            display_cleaned_dataset(st.session_state.cleaned_df)
 
 def render_insights_page() -> None:
     st.title("Insights Dashboard")
