@@ -258,17 +258,25 @@ def render_upload_page() -> None:
             st.session_state.progress["Upload"] = "Failed"
 
 
-# In ui.py, update the undo/redo section in render_clean_page()
+# In ui.py, update the render_clean_page() function
 
 def render_clean_page() -> None:
-    st.title("Clean Your Dataset")
+    # Remove this line to avoid duplicating the title
+    # st.title("Clean Your Dataset")
+
     if 'df' not in st.session_state or st.session_state.df is None:
         st.warning("Please upload a dataset first on the Upload page.")
         return
 
+    # Add a flag to track if a redo operation has just occurred
+    if 'just_redid' not in st.session_state:
+        st.session_state.just_redid = False
+
+    # Use the latest cleaned_df if available, otherwise use the original df
     df = st.session_state.cleaned_df if st.session_state.cleaned_df is not None else st.session_state.df
     available_columns = [
-        col for col in df.columns if col not in st.session_state.dropped_columns]
+        col for col in df.columns if col not in st.session_state.dropped_columns
+    ]
 
     if not available_columns:
         st.error("No columns available for cleaning. Please upload a new dataset.")
@@ -283,11 +291,10 @@ def render_clean_page() -> None:
         progress_text += f"{emoji} {step}: {status}\n"
     st.markdown(progress_text)
 
-    if not st.session_state.suggestions or id(
-            st.session_state.cleaned_df) != id(df):
+    # Only recompute suggestions if the dataset has changed and no redo has just occurred
+    if (not st.session_state.suggestions or id(st.session_state.cleaned_df) != id(df)) and not st.session_state.just_redid:
         with st.spinner("Generating AI cleaning suggestions..."):
-            st.session_state.suggestions = get_cached_suggestions(
-                df[available_columns])
+            st.session_state.suggestions = get_cached_suggestions(df[available_columns])
 
     st.subheader("Dataset Health")
     score = calculate_health_score(df)
@@ -653,7 +660,6 @@ def render_clean_page() -> None:
                             st.write(f"- {log}")
 
                     if apply_button or auto_clean_button:
-                        # Save the current state before applying changes
                         current_state = (
                             df.copy(),
                             st.session_state.logs.copy(),
@@ -662,7 +668,7 @@ def render_clean_page() -> None:
                         st.session_state.previous_states.append(current_state)
                         if len(st.session_state.previous_states) > 5:
                             st.session_state.previous_states.pop(0)
-                        st.session_state.redo_states = []  # Clear redo states on new operation
+                        st.session_state.redo_states = []
                         st.session_state.cleaned_df = cleaned_df
                         st.session_state.logs = logs
                         if columns_to_drop:
@@ -671,7 +677,6 @@ def render_clean_page() -> None:
                             "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                             "logs": logs
                         })
-                        # Update suggestions based on the new dataset
                         st.session_state.suggestions = get_cached_suggestions(
                             cleaned_df[[col for col in cleaned_df.columns if col not in st.session_state.dropped_columns]])
                         st.success("Changes applied successfully!")
@@ -689,7 +694,6 @@ def render_clean_page() -> None:
     with col1:
         if st.session_state.previous_states and st.button(
                 "Undo Last Cleaning", help="Revert to the previous state"):
-            # Save the current state to redo_states before undoing
             current_state = (
                 st.session_state.cleaned_df.copy(),
                 st.session_state.logs.copy(),
@@ -699,7 +703,6 @@ def render_clean_page() -> None:
             if len(st.session_state.redo_states) > 5:
                 st.session_state.redo_states.pop(0)
             
-            # Restore the previous state
             previous_df, previous_logs, previous_dropped_columns = st.session_state.previous_states.pop()
             st.session_state.cleaned_df = previous_df
             st.session_state.logs = previous_logs
@@ -718,7 +721,9 @@ def render_clean_page() -> None:
     with col2:
         if st.session_state.redo_states and st.button(
                 "Redo Last Cleaning", help="Reapply the last undone state"):
-            # Save the current state to previous_states before redoing
+            # Set the flag to indicate a redo operation has occurred
+            st.session_state.just_redid = True
+            
             current_state = (
                 st.session_state.cleaned_df.copy(),
                 st.session_state.logs.copy(),
@@ -728,7 +733,6 @@ def render_clean_page() -> None:
             if len(st.session_state.previous_states) > 5:
                 st.session_state.previous_states.pop(0)
             
-            # Restore the state from redo_states
             redo_df, redo_logs, redo_dropped_columns = st.session_state.redo_states.pop()
             st.session_state.cleaned_df = redo_df
             st.session_state.logs = redo_logs
@@ -743,6 +747,12 @@ def render_clean_page() -> None:
             from app import save_auth_state
             save_auth_state()
             st.rerun()
+
+    # Display the dataset after a redo operation to ensure it persists
+    if st.session_state.just_redid and st.session_state.cleaned_df is not None:
+        display_cleaned_dataset(st.session_state.cleaned_df)
+        # Reset the flag after displaying the dataset
+        st.session_state.just_redid = False
 
     with st.expander("Save/Apply Cleaning Templates", expanded=False):
         st.subheader("Save/Apply Cleaning Templates")
