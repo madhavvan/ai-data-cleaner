@@ -1,3 +1,9 @@
+import streamlit as st
+st.set_page_config(
+    page_title="Data Toy AI",
+    layout="wide",
+    initial_sidebar_state="expanded")
+
 import logging
 import os
 import pickle
@@ -8,7 +14,6 @@ from typing import Optional
 import bcrypt
 import psycopg2
 import requests
-import streamlit as st
 import streamlit.components.v1 as components
 from authlib.integrations.requests_client import OAuth2Session
 from psycopg2 import sql
@@ -18,10 +23,6 @@ from ui import (render_clean_page, render_insights_page,
                 render_predictive_page, render_upload_page)
 from visualizations import render_visualization_page
 
-st.set_page_config(
-    page_title="Data Toy",
-    layout="wide",
-    initial_sidebar_state="expanded")
 
 # Set up logging with rotation
 logger = logging.getLogger(__name__)
