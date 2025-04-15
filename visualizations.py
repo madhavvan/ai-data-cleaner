@@ -311,10 +311,7 @@ def render_visualization_page(df):
     if submit_button:
         try:
             df = st.session_state.filtered_df
-            # Fix 12: Sample large datasets for performance
-            if len(df) > 1000:
-                df = df.sample(min(1000, len(df)), random_state=42)
-                st.info(f"Dataset sampled to {len(df)} rows for performance.")
+
             fig = None
             is_wordcloud = False
             is_jointplot = False

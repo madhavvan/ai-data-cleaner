@@ -104,11 +104,7 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
     try:
         st.subheader("Cleaned Dataset")
         st.write(f"Dataset size: {cleaned_df.shape}")
-        if len(cleaned_df) > 1000:
-            st.warning(f"Dataset has {len(cleaned_df)} rows. Displaying first 1000 rows to avoid performance issues.")
-            st.dataframe(cleaned_df.head(1000), use_container_width=True)
-        else:
-            st.dataframe(cleaned_df, use_container_width=True)
+        st.dataframe(cleaned_df, use_container_width=True)
     except Exception as e:
         st.error(f"Error displaying dataset: {str(e)}")
 
@@ -865,7 +861,7 @@ def render_clean_page() -> None:
                 st.info("Download the CSV and import it into Tableau Public or Desktop to create visualizations!")
         if st.session_state.cleaned_df is not None:
             display_cleaned_dataset(st.session_state.cleaned_df)
-            
+
 def render_insights_page() -> None:
     st.title("Insights Dashboard")
     if 'df' not in st.session_state or st.session_state.df is None:
