@@ -1,9 +1,9 @@
+import streamlit as st
 st.set_page_config(
     page_title="Data Toy AI",
     layout="wide",
     initial_sidebar_state="expanded")
 
-import streamlit as st
 import logging
 import os
 import pickle
