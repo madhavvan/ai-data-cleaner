@@ -16,7 +16,7 @@ from data_utils import (analyze_time_series, apply_cleaning_operations,
                         train_ml_model)
 from predictive import \
     render_predictive_page as render_predictive_page_external
-from app import save_auth_state
+
 
 # Set up logging with rotation
 logger = logging.getLogger(__name__)
@@ -127,6 +127,7 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
 
 
 def render_upload_page() -> None:
+    from app import save_auth_state
     st.markdown(
         "<p class='welcome'>Start your data journey here!</p>",
         unsafe_allow_html=True)
@@ -393,8 +394,7 @@ def render_upload_page() -> None:
 
 
 def render_clean_page() -> None:
-    # Remove this line to avoid duplicating the title
-    # st.title("Clean Your Dataset")
+    from app import save_auth_state
 
     if 'df' not in st.session_state or st.session_state.df is None:
         st.warning("Please upload a dataset first on the Upload page.")
@@ -462,7 +462,6 @@ def render_clean_page() -> None:
                 st.success("Smart Workflow executed successfully!")
                 st.session_state.progress["Clean"] = "Done"
                 display_cleaned_dataset(st.session_state.cleaned_df)
-                from app import save_auth_state
                 save_auth_state()
             except Exception as e:
                 st.error(f"Error executing smart workflow: {str(e)}")
@@ -814,7 +813,6 @@ def render_clean_page() -> None:
                         st.success("Changes applied successfully!")
                         st.session_state.progress["Clean"] = "Done"
                         display_cleaned_dataset(st.session_state.cleaned_df)
-                        from app import save_auth_state
                         save_auth_state()
                 except Exception as e:
                     st.error(f"Error processing cleaning operations: {str(e)}")
@@ -846,7 +844,6 @@ def render_clean_page() -> None:
                 "logs": ["Undid last cleaning operation"]
             })
             display_cleaned_dataset(st.session_state.cleaned_df)
-            from app import save_auth_state
             save_auth_state()
             st.rerun()
 
@@ -876,7 +873,6 @@ def render_clean_page() -> None:
                 "logs": ["Redid last cleaning operation"]
             })
             display_cleaned_dataset(st.session_state.cleaned_df)
-            from app import save_auth_state
             save_auth_state()
             st.rerun()
 
@@ -966,7 +962,6 @@ def render_clean_page() -> None:
                             st.success(f"Applied template '{template_to_apply}'")
                             st.session_state.progress["Clean"] = "Done"
                             display_cleaned_dataset(st.session_state.cleaned_df)
-                            from app import save_auth_state
                             save_auth_state()
                         except Exception as e:
                             st.error(f"Error applying template: {str(e)}")
@@ -1023,6 +1018,7 @@ def render_insights_page() -> None:
 
 
 def render_predictive_page(df: pd.DataFrame) -> None:
+    from app import save_auth_state
     st.title("Predictive Analytics")
     if 'df' not in st.session_state or st.session_state.df is None:
         st.warning("Please upload a dataset first on the Upload page.")
