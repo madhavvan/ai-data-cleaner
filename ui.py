@@ -125,6 +125,7 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
 
 
 
+
 def render_upload_page() -> None:
     st.markdown(
         "<p class='welcome'>Start your data journey here!</p>",
@@ -140,6 +141,105 @@ def render_upload_page() -> None:
         help="Upload a dataset file to begin.",
         key="file_uploader"
     )
+
+    # Handle file upload first
+    if uploaded_file:
+        try:
+            with st.spinner("Loading dataset..."):
+                if uploaded_file.size > 50 * 1024 * 1024:  # 50MB
+                    st.warning(
+                        "File size exceeds 50MB. Using chunked processing.")
+                    if uploaded_file.name.endswith('.csv'):
+                        chunks = pd.read_csv(uploaded_file, chunksize=10000)
+                        df_list = []
+                        progress_bar = st.progress(0)
+                        total_chunks = uploaded_file.size // (10000 * 100) or 1
+                        for i, chunk in enumerate(chunks):
+                            df_list.append(chunk)
+                            progress_bar.progress(
+                                min((i + 1) / total_chunks, 1.0))
+                        df = pd.concat(df_list, ignore_index=True)
+                    elif uploaded_file.name.endswith('.json'):
+                        chunks = pd.read_json(uploaded_file, chunksize=10000)
+                        df_list = []
+                        progress_bar = st.progress(0)
+                        total_chunks = uploaded_file.size // (10000 * 100) or 1
+                        for i, chunk in enumerate(chunks):
+                            df_list.append(chunk)
+                            progress_bar.progress(
+                                min((i + 1) / total_chunks, 1.0))
+                        df = pd.concat(df_list, ignore_index=True)
+                    elif uploaded_file.name.endswith('.parquet'):
+                        df = pq.read_table(uploaded_file).to_pandas()
+                    else:
+                        df = pd.read_excel(uploaded_file)
+                else:
+                    if uploaded_file.name.endswith('.csv'):
+                        df = pd.read_csv(uploaded_file)
+                    elif uploaded_file.name.endswith('.json'):
+                        df = pd.read_json(uploaded_file)
+                    elif uploaded_file.name.endswith('.parquet'):
+                        df = pq.read_table(uploaded_file).to_pandas()
+                    else:
+                        df = pd.read_excel(uploaded_file)
+
+                if df.shape[0] > 4000:
+                    st.info(
+                        f"Large dataset detected ({
+                            df.shape[0]} rows). Processing optimized for performance.")
+                if df.empty:
+                    st.error(
+                        "Uploaded dataset is empty. Please upload a valid file.")
+                    return
+
+                with st.spinner("Profiling dataset..."):
+                    profile = profile_dataset(df)
+                    st.subheader("Dataset Profile")
+                    for col, info in profile.items():
+                        if any(info.values()):
+                            st.write(f"**Column: {col}**")
+                            if info['mixed_types']:
+                                st.write(
+                                    f"- Mixed Types Detected: {info['mixed_types']}")
+                                st.write(
+                                    f"  Suggestion: {
+                                        info['type_suggestion']}")
+                            if info.get('inconsistent_formats'):
+                                st.write(
+                                    f"- Inconsistent Formats: {info['inconsistent_formats']}")
+                                st.write(
+                                    f"  Suggestion: {
+                                        info['format_suggestion']}")
+                            if info['missing_percentage'] > 10:
+                                st.write(
+                                    f"- Missing Values: {info['missing_percentage']:.2f}%")
+                                st.write(
+                                    f"  Suggestion: {
+                                        info['missing_suggestion']}")
+
+                st.session_state.df = df
+                st.session_state.cleaned_df = None
+                st.session_state.logs = []
+                st.session_state.suggestions = []
+                st.session_state.previous_states = []
+                st.session_state.redo_states = []
+                st.session_state.chat_history = []
+                st.session_state.cleaning_history = []
+                st.session_state.cleaning_templates = {}
+                st.session_state.ai_suggestions_used = 0
+                st.session_state.dropped_columns = []
+
+                st.success("Dataset uploaded successfully!")
+                st.session_state.progress["Upload"] = "Done"
+                save_auth_state()
+                st.rerun()
+
+        except Exception as e:
+            st.error(
+                f"Error loading file: {
+                    str(e)}. Please ensure the file is a valid CSV, Excel, JSON, or Parquet file.")
+            st.session_state.progress["Upload"] = "Failed"
+            return  # Exit to prevent further execution
 
     # Display metadata and buttons if dataset exists
     if st.session_state.df is not None:
@@ -161,11 +261,13 @@ def render_upload_page() -> None:
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Start Cleaning", key="start_cleaning_button"):
+                logger.debug("Start Cleaning button clicked")
                 st.session_state.page = "Clean"
                 save_auth_state()
                 st.rerun()
         with col2:
             if st.button("Delete Dataset", key="delete_dataset_button"):
+                logger.debug("Delete Dataset button clicked")
                 # Reset dataset and related session state variables
                 st.session_state.df = None
                 st.session_state.cleaned_df = None
@@ -188,6 +290,7 @@ def render_upload_page() -> None:
                     "Share": "Not Started"
                 }
                 save_auth_state()
+                st.success("Dataset deleted successfully!")
                 st.rerun()
 
     # Handle file upload

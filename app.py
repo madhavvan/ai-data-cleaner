@@ -1070,7 +1070,7 @@ if st.session_state.authenticated:
             Optional[str]: Selected page or None if no page is selected.
         """
         try:
-            st.sidebar.image(logo_path, use_column_width=True)
+            st.sidebar.image(logo_path, use_container_width=True)
         except FileNotFoundError:
             st.sidebar.markdown(
                 "**Data Toy** (Logo not found)",
