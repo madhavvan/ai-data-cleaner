@@ -40,7 +40,7 @@ def get_download_link(df: pd.DataFrame, filename: str) -> str:
     b64 = base64.b64encode(csv.encode()).decode()
     return f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download {filename}</a>'
 
-def read_file_with_progress(uploaded_file, chunksize=10000):
+def read_file_with_progress(uploaded_file, chunksize=10000, file_type='csv'):
     df_list = []
     total_size = uploaded_file.size
     processed_rows = 0
@@ -48,7 +48,13 @@ def read_file_with_progress(uploaded_file, chunksize=10000):
     status_text = st.empty()
     start_time = datetime.now()
 
-    chunks = pd.read_csv(uploaded_file, chunksize=chunksize)
+    if file_type == 'csv':
+        chunks = pd.read_csv(uploaded_file, chunksize=chunksize)
+    elif file_type == 'json':
+        chunks = pd.read_json(uploaded_file, lines=True, chunksize=chunksize)
+    else:
+        raise ValueError(f"Unsupported file type for chunked reading: {file_type}")
+
     for i, chunk in enumerate(chunks):
         df_list.append(chunk)
         processed_rows += len(chunk)
@@ -215,9 +221,9 @@ def render_upload_page() -> None:
                 if uploaded_file.size > 50 * 1024 * 1024:  # 50MB
                     st.warning("File size exceeds 50MB. Using chunked processing.")
                     if uploaded_file.name.endswith('.csv'):
-                        df = read_file_with_progress(uploaded_file)
+                        df = read_file_with_progress(uploaded_file, file_type='csv')
                     elif uploaded_file.name.endswith('.json'):
-                        df = read_file_with_progress(uploaded_file)
+                        df = read_file_with_progress(uploaded_file, file_type='json')
                     elif uploaded_file.name.endswith('.parquet'):
                         df = pq.read_table(uploaded_file).to_pandas()
                     else:
@@ -279,6 +285,7 @@ def render_upload_page() -> None:
                 st.success("Dataset uploaded successfully!")
                 st.session_state.progress["Upload"] = "Done"
                 save_auth_state()
+                st.rerun()  # Reintroduce st.rerun() to refresh UI after upload
 
         except Exception as e:
             st.error(f"Error loading file: {str(e)}. Please ensure the file is a valid CSV, Excel, JSON, or Parquet file.")
@@ -347,7 +354,6 @@ def render_upload_page() -> None:
                 save_auth_state()
                 st.success("Dataset deleted successfully!")
                 st.rerun()
-
 
 def render_clean_page() -> None:
     from app import save_auth_state
@@ -971,7 +977,6 @@ def render_insights_page() -> None:
         except Exception as e:
             st.error(f"Error generating insights: {str(e)}")
             st.session_state.progress["Insights"] = "Failed"
-
 
 def render_predictive_page(df: pd.DataFrame) -> None:
     from app import save_auth_state
