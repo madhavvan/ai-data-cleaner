@@ -121,8 +121,9 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
             f"cleaned_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"),
         unsafe_allow_html=True)
 
+# In ui.py, update the render_upload_page() function
+
 def render_upload_page() -> None:
-    st.title("Upload Your Dataset")
     st.markdown(
         "<p class='welcome'>Start your data journey here!</p>",
         unsafe_allow_html=True)
@@ -138,10 +139,9 @@ def render_upload_page() -> None:
         key="file_uploader"
     )
 
-    # Display metadata if dataset exists (no buttons)
+    # Display metadata and buttons if dataset exists
     if st.session_state.df is not None:
         st.subheader("Original Dataset Preview (First 10 Rows)")
-        # Updated with use_container_width
         st.dataframe(st.session_state.df.head(10), use_container_width=True)
         st.subheader("Basic Metadata")
         score = calculate_health_score(st.session_state.df)
@@ -154,6 +154,39 @@ def render_upload_page() -> None:
             "This is the original dataset. Cleaning operations are applied to a working copy.")
         st.warning(
             "Uploading a new file will overwrite the current dataset and reset all cleaning operations. Proceed with caution!")
+
+        # Add "Start Cleaning" and "Delete Dataset" buttons side by side
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Start Cleaning", key="start_cleaning_button"):
+                st.session_state.page = "Clean"
+                save_auth_state()
+                st.rerun()
+        with col2:
+            if st.button("Delete Dataset", key="delete_dataset_button"):
+                # Reset dataset and related session state variables
+                st.session_state.df = None
+                st.session_state.cleaned_df = None
+                st.session_state.logs = []
+                st.session_state.suggestions = []
+                st.session_state.previous_states = []
+                st.session_state.redo_states = []
+                st.session_state.chat_history = []
+                st.session_state.cleaning_history = []
+                st.session_state.cleaning_templates = {}
+                st.session_state.ai_suggestions_used = 0
+                st.session_state.dropped_columns = []
+                # Reset progress for all pages except "Upload"
+                st.session_state.progress = {
+                    "Upload": "In Progress",
+                    "Clean": "Not Started",
+                    "Insights": "Not Started",
+                    "Visualize": "Not Started",
+                    "Predictive": "Not Started",
+                    "Share": "Not Started"
+                }
+                save_auth_state()
+                st.rerun()
 
     # Handle file upload
     if uploaded_file:
@@ -246,7 +279,7 @@ def render_upload_page() -> None:
                 st.session_state.progress["Upload"] = "Done"
                 from app import save_auth_state
                 save_auth_state()
-                st.rerun()  # Rerun to refresh the UI after upload
+                st.rerun()
         except Exception as e:
             st.error(
                 f"Error loading file: {

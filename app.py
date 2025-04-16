@@ -564,6 +564,21 @@ def load_css(theme: str = "dark") -> None:
     a.google-login-button {
         text-decoration: none !important;
     }
+
+    body.dark-theme .stButton#start_cleaning_button > button {
+        background-color: #4CAF50 !important;
+        color: white !important;
+    }
+    body.dark-theme .stButton#start_cleaning_button > button:hover {
+        background-color: #45a049 !important;
+    }
+    body.dark-theme .stButton#delete_dataset_button > button {
+        background-color: #f44336 !important;
+        color: white !important;
+    }
+    body.dark-theme .stButton#delete_dataset_button > button:hover {
+        background-color: #da190b !important;
+    }
     """
     # Use components.html to inject the CSS and set the body class immediately
     components.html(
