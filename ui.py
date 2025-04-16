@@ -126,10 +126,8 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
 
 
 
-
-# Replace the render_upload_page() function in ui.py with this
 def render_upload_page() -> None:
-    # Import save_auth_state locally to avoid circular import
+
     from app import save_auth_state
 
     st.markdown(
@@ -139,10 +137,6 @@ def render_upload_page() -> None:
     initialize_session_state()
     st.session_state.progress["Upload"] = "In Progress"
 
-    # Initialize a flag to track if the file has been processed
-    if "file_processed" not in st.session_state:
-        st.session_state.file_processed = False
-
     # Always display the upload widget
     uploaded_file = st.file_uploader(
         "Choose a file (CSV, Excel, JSON, or Parquet)",
@@ -151,8 +145,8 @@ def render_upload_page() -> None:
         key="file_uploader"
     )
 
-    # Handle file upload only if a new file is uploaded and hasn't been processed yet
-    if uploaded_file and not st.session_state.file_processed:
+    # Handle file upload
+    if uploaded_file:
         try:
             with st.spinner("Loading dataset..."):
                 if uploaded_file.size > 50 * 1024 * 1024:  # 50MB
@@ -203,7 +197,28 @@ def render_upload_page() -> None:
 
                 with st.spinner("Profiling dataset..."):
                     profile = profile_dataset(df)
-                    st.session_state.upload_profile = profile  # Store profile in session state
+                    st.subheader("Dataset Profile")
+                    for col, info in profile.items():
+                        if any(info.values()):
+                            st.write(f"**Column: {col}**")
+                            if info['mixed_types']:
+                                st.write(
+                                    f"- Mixed Types Detected: {info['mixed_types']}")
+                                st.write(
+                                    f"  Suggestion: {
+                                        info['type_suggestion']}")
+                            if info.get('inconsistent_formats'):
+                                st.write(
+                                    f"- Inconsistent Formats: {info['inconsistent_formats']}")
+                                st.write(
+                                    f"  Suggestion: {
+                                        info['format_suggestion']}")
+                            if info['missing_percentage'] > 10:
+                                st.write(
+                                    f"- Missing Values: {info['missing_percentage']:.2f}%")
+                                st.write(
+                                    f"  Suggestion: {
+                                        info['missing_suggestion']}")
 
                 st.session_state.df = df
                 st.session_state.cleaned_df = None
@@ -220,9 +235,6 @@ def render_upload_page() -> None:
                 st.success("Dataset uploaded successfully!")
                 st.session_state.progress["Upload"] = "Done"
                 save_auth_state()
-
-                # Set the flag to indicate the file has been processed
-                st.session_state.file_processed = True
                 st.rerun()
 
         except Exception as e:
@@ -248,31 +260,12 @@ def render_upload_page() -> None:
         st.warning(
             "Uploading a new file will overwrite the current dataset and reset all cleaning operations. Proceed with caution!")
 
-        # Display dataset profile if available
-        if "upload_profile" in st.session_state:
-            st.subheader("Dataset Profile")
-            profile = st.session_state.upload_profile
-            for col, info in profile.items():
-                if any(info.values()):
-                    st.write(f"**Column: {col}**")
-                    if info['mixed_types']:
-                        st.write(f"- Mixed Types Detected: {info['mixed_types']}")
-                        st.write(f"  Suggestion: {info['type_suggestion']}")
-                    if info.get('inconsistent_formats'):
-                        st.write(f"- Inconsistent Formats: {info['inconsistent_formats']}")
-                        st.write(f"  Suggestion: {info['format_suggestion']}")
-                    if info['missing_percentage'] > 10:
-                        st.write(f"- Missing Values: {info['missing_percentage']:.2f}%")
-                        st.write(f"  Suggestion: {info['missing_suggestion']}")
-
         # Add "Start Cleaning" and "Delete Dataset" buttons side by side
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Start Cleaning", key="start_cleaning_button"):
                 logger.debug("Start Cleaning button clicked")
                 st.session_state.page = "Clean"
-                # Reset the file_processed flag to allow new uploads after navigation
-                st.session_state.file_processed = False
                 save_auth_state()
                 st.rerun()
         with col2:
@@ -290,11 +283,6 @@ def render_upload_page() -> None:
                 st.session_state.cleaning_templates = {}
                 st.session_state.ai_suggestions_used = 0
                 st.session_state.dropped_columns = []
-                # Clear the profile
-                if "upload_profile" in st.session_state:
-                    del st.session_state.upload_profile
-                # Reset the file_processed flag to allow new uploads
-                st.session_state.file_processed = False
                 # Reset progress for all pages except "Upload"
                 st.session_state.progress = {
                     "Upload": "In Progress",
@@ -307,6 +295,7 @@ def render_upload_page() -> None:
                 save_auth_state()
                 st.success("Dataset deleted successfully!")
                 st.rerun()
+
 
 def render_clean_page() -> None:
     from app import save_auth_state
