@@ -127,7 +127,9 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
 
 
 
+# Replace the render_upload_page() function in ui.py with this
 def render_upload_page() -> None:
+    # Import save_auth_state locally to avoid circular import
     from app import save_auth_state
 
     st.markdown(
@@ -137,6 +139,10 @@ def render_upload_page() -> None:
     initialize_session_state()
     st.session_state.progress["Upload"] = "In Progress"
 
+    # Initialize a flag to track if the file has been processed
+    if "file_processed" not in st.session_state:
+        st.session_state.file_processed = False
+
     # Always display the upload widget
     uploaded_file = st.file_uploader(
         "Choose a file (CSV, Excel, JSON, or Parquet)",
@@ -145,8 +151,8 @@ def render_upload_page() -> None:
         key="file_uploader"
     )
 
-    # Handle file upload only if a new file is uploaded
-    if uploaded_file:
+    # Handle file upload only if a new file is uploaded and hasn't been processed yet
+    if uploaded_file and not st.session_state.file_processed:
         try:
             with st.spinner("Loading dataset..."):
                 if uploaded_file.size > 50 * 1024 * 1024:  # 50MB
@@ -215,8 +221,8 @@ def render_upload_page() -> None:
                 st.session_state.progress["Upload"] = "Done"
                 save_auth_state()
 
-                # Clear the file uploader to prevent reprocessing on rerun
-                st.session_state.file_uploader = None
+                # Set the flag to indicate the file has been processed
+                st.session_state.file_processed = True
                 st.rerun()
 
         except Exception as e:
@@ -265,6 +271,8 @@ def render_upload_page() -> None:
             if st.button("Start Cleaning", key="start_cleaning_button"):
                 logger.debug("Start Cleaning button clicked")
                 st.session_state.page = "Clean"
+                # Reset the file_processed flag to allow new uploads after navigation
+                st.session_state.file_processed = False
                 save_auth_state()
                 st.rerun()
         with col2:
@@ -285,6 +293,8 @@ def render_upload_page() -> None:
                 # Clear the profile
                 if "upload_profile" in st.session_state:
                     del st.session_state.upload_profile
+                # Reset the file_processed flag to allow new uploads
+                st.session_state.file_processed = False
                 # Reset progress for all pages except "Upload"
                 st.session_state.progress = {
                     "Upload": "In Progress",
