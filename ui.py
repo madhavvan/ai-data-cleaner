@@ -8,15 +8,15 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 import pyarrow.parquet as pq  # For Parquet file support
 import streamlit as st
+import concurrent.futures
+import threading
 from data_utils import (analyze_time_series, apply_cleaning_operations,
                         calculate_health_score, chat_with_gpt,
                         detect_anomalies, extract_column, forecast_time_series,
                         generate_synthetic_data, get_cleaning_suggestions,
                         get_insights, perform_clustering, suggest_workflow,
                         train_ml_model)
-from predictive import \
-    render_predictive_page as render_predictive_page_external
-
+from predictive import render_predictive_page as render_predictive_page_external
 
 # Set up logging with rotation
 logger = logging.getLogger(__name__)
@@ -31,42 +31,68 @@ if not logger.handlers:  # Avoid adding handlers multiple times
     logger.addHandler(handler)
 
 # Cache expensive operations
-
-
 @st.cache_data
 def get_cached_suggestions(df: pd.DataFrame) -> List[Tuple[str, str]]:
     return get_cleaning_suggestions(df)
-
 
 def get_download_link(df: pd.DataFrame, filename: str) -> str:
     csv = df.to_csv(index=False)
     b64 = base64.b64encode(csv.encode()).decode()
     return f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download {filename}</a>'
 
+def read_file_with_progress(uploaded_file, chunksize=10000):
+    df_list = []
+    total_size = uploaded_file.size
+    processed_rows = 0
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    start_time = datetime.now()
 
-def profile_dataset(df: pd.DataFrame) -> Dict[str, any]:
+    chunks = pd.read_csv(uploaded_file, chunksize=chunksize)
+    for i, chunk in enumerate(chunks):
+        df_list.append(chunk)
+        processed_rows += len(chunk)
+        progress = min(processed_rows / 100000, 1.0)  # Approximate max rows
+        progress_bar.progress(progress)
+        elapsed = (datetime.now() - start_time).total_seconds()
+        estimated_total = elapsed / (i + 1) * (total_size // (chunksize * 100) or 1)
+        remaining = estimated_total - elapsed
+        status_text.text(f"Processed {processed_rows} rows... ({remaining:.1f}s remaining)")
+
+    progress_bar.progress(1.0)
+    status_text.text("Processing complete!")
+    return pd.concat(df_list, ignore_index=True)
+
+def optimize_dtypes(df: pd.DataFrame) -> pd.DataFrame:
+    for col in df.select_dtypes(include=['float64']).columns:
+        df[col] = pd.to_numeric(df[col], downcast='float')
+    for col in df.select_dtypes(include=['int64']).columns:
+        df[col] = pd.to_numeric(df[col], downcast='integer')
+    for col in df.select_dtypes(include=['object']).columns:
+        if df[col].nunique() / len(df[col]) < 0.5:
+            df[col] = df[col].astype('category')
+    return df
+
+@st.cache_data
+def profile_dataset(_df: pd.DataFrame) -> Dict[str, any]:
     profile = {}
-    for col in df.columns:
+    for col in _df.columns:
         col_profile = {}
-        col_types = df[col].apply(type).nunique()
+        col_types = _df[col].apply(type).nunique()
         col_profile['mixed_types'] = col_types > 1
-        col_profile['type_suggestion'] = f"Convert {col} to {
-            df[col].dtype.name}" if col_types > 1 else None
+        col_profile['type_suggestion'] = f"Convert {col} to {_df[col].dtype.name}" if col_types > 1 else None
 
-        if pd.api.types.is_datetime64_any_dtype(df[col]):
-            formats = df[col].dropna().apply(
-                lambda x: x.strftime('%Y-%m-%d')).nunique()
+        if pd.api.types.is_datetime64_any_dtype(_df[col]):
+            formats = _df[col].dropna().apply(lambda x: x.strftime('%Y-%m-%d')).nunique()
             col_profile['inconsistent_formats'] = formats > 1
             col_profile['format_suggestion'] = "Standardize date format to YYYY-MM-DD" if formats > 1 else None
 
-        missing_percentage = df[col].isna().mean() * 100
+        missing_percentage = _df[col].isna().mean() * 100
         col_profile['missing_percentage'] = missing_percentage
-        col_profile['missing_suggestion'] = f"Consider filling or dropping {col} (missing {
-            missing_percentage:.2f}%)" if missing_percentage > 10 else None
+        col_profile['missing_suggestion'] = f"Consider filling or dropping {col} (missing {missing_percentage:.2f}%)" if missing_percentage > 10 else None
 
         profile[col] = col_profile
     return profile
-
 
 def initialize_session_state() -> None:
     defaults = {
@@ -96,7 +122,6 @@ def initialize_session_state() -> None:
         if key not in st.session_state:
             st.session_state[key] = value
 
-
 def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
     if cleaned_df is None or cleaned_df.empty:
         st.warning("No cleaned dataset available to display.")
@@ -122,13 +147,16 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
             f"cleaned_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"),
         unsafe_allow_html=True)
 
-
-
-
-
 def render_upload_page() -> None:
-
     from app import save_auth_state
+
+    # Handle navigation flag before rendering any widgets
+    if "navigate_to" in st.session_state:
+        if st.session_state.navigate_to == "Clean":
+            st.session_state.sidebar_page = "Clean"
+            del st.session_state.navigate_to  # Clear the flag
+            save_auth_state()
+            st.rerun()
 
     st.markdown(
         "<p class='welcome'>Start your data journey here!</p>",
@@ -148,30 +176,48 @@ def render_upload_page() -> None:
     # Handle file upload
     if uploaded_file:
         try:
+            # Early validation
+            if uploaded_file.size == 0:
+                st.error("Uploaded file is empty. Please upload a valid file.")
+                return
+            try:
+                if uploaded_file.name.endswith('.csv'):
+                    sample = pd.read_csv(uploaded_file, nrows=1)
+                    if sample.empty or sample.columns.empty:
+                        st.error("CSV file has no valid headers or data. Please check the file format.")
+                        return
+                    uploaded_file.seek(0)
+                elif uploaded_file.name.endswith('.json'):
+                    sample = pd.read_json(uploaded_file, lines=True, nrows=1)
+                    if sample.empty:
+                        st.error("JSON file is empty or malformed. Please check the file format.")
+                        return
+                    uploaded_file.seek(0)
+                elif uploaded_file.name.endswith('.parquet'):
+                    try:
+                        pq.read_metadata(uploaded_file)
+                    except Exception:
+                        st.error("Parquet file is corrupt or invalid. Please check the file format.")
+                        return
+                    uploaded_file.seek(0)
+                elif uploaded_file.name.endswith('.xlsx'):
+                    sample = pd.read_excel(uploaded_file, nrows=1)
+                    if sample.empty:
+                        st.error("Excel file is empty or malformed. Please check the file format.")
+                        return
+                    uploaded_file.seek(0)
+            except Exception as e:
+                st.error(f"Invalid file format: {str(e)}. Please upload a valid CSV, Excel, JSON, or Parquet file.")
+                return
+
+            start_time = datetime.now()
             with st.spinner("Loading dataset..."):
                 if uploaded_file.size > 50 * 1024 * 1024:  # 50MB
-                    st.warning(
-                        "File size exceeds 50MB. Using chunked processing.")
+                    st.warning("File size exceeds 50MB. Using chunked processing.")
                     if uploaded_file.name.endswith('.csv'):
-                        chunks = pd.read_csv(uploaded_file, chunksize=10000)
-                        df_list = []
-                        progress_bar = st.progress(0)
-                        total_chunks = uploaded_file.size // (10000 * 100) or 1
-                        for i, chunk in enumerate(chunks):
-                            df_list.append(chunk)
-                            progress_bar.progress(
-                                min((i + 1) / total_chunks, 1.0))
-                        df = pd.concat(df_list, ignore_index=True)
+                        df = read_file_with_progress(uploaded_file)
                     elif uploaded_file.name.endswith('.json'):
-                        chunks = pd.read_json(uploaded_file, chunksize=10000)
-                        df_list = []
-                        progress_bar = st.progress(0)
-                        total_chunks = uploaded_file.size // (10000 * 100) or 1
-                        for i, chunk in enumerate(chunks):
-                            df_list.append(chunk)
-                            progress_bar.progress(
-                                min((i + 1) / total_chunks, 1.0))
-                        df = pd.concat(df_list, ignore_index=True)
+                        df = read_file_with_progress(uploaded_file)
                     elif uploaded_file.name.endswith('.parquet'):
                         df = pq.read_table(uploaded_file).to_pandas()
                     else:
@@ -186,14 +232,18 @@ def render_upload_page() -> None:
                     else:
                         df = pd.read_excel(uploaded_file)
 
-                if df.shape[0] > 4000:
-                    st.info(
-                        f"Large dataset detected ({
-                            df.shape[0]} rows). Processing optimized for performance.")
                 if df.empty:
-                    st.error(
-                        "Uploaded dataset is empty. Please upload a valid file.")
+                    st.error("Uploaded dataset is empty. Please upload a valid file.")
                     return
+                elif df.isna().all().all():
+                    st.error("Uploaded dataset contains only missing values. Please upload a valid file with non-missing data.")
+                    st.session_state.df = None
+                    return
+
+                df = optimize_dtypes(df)
+
+                if df.shape[0] > 4000:
+                    st.info(f"Large dataset detected ({df.shape[0]} rows). Processing optimized for performance.")
 
                 with st.spinner("Profiling dataset..."):
                     profile = profile_dataset(df)
@@ -202,23 +252,14 @@ def render_upload_page() -> None:
                         if any(info.values()):
                             st.write(f"**Column: {col}**")
                             if info['mixed_types']:
-                                st.write(
-                                    f"- Mixed Types Detected: {info['mixed_types']}")
-                                st.write(
-                                    f"  Suggestion: {
-                                        info['type_suggestion']}")
+                                st.write(f"- Mixed Types Detected: {info['mixed_types']}")
+                                st.write(f"  Suggestion: {info['type_suggestion']}")
                             if info.get('inconsistent_formats'):
-                                st.write(
-                                    f"- Inconsistent Formats: {info['inconsistent_formats']}")
-                                st.write(
-                                    f"  Suggestion: {
-                                        info['format_suggestion']}")
+                                st.write(f"- Inconsistent Formats: {info['inconsistent_formats']}")
+                                st.write(f"  Suggestion: {info['format_suggestion']}")
                             if info['missing_percentage'] > 10:
-                                st.write(
-                                    f"- Missing Values: {info['missing_percentage']:.2f}%")
-                                st.write(
-                                    f"  Suggestion: {
-                                        info['missing_suggestion']}")
+                                st.write(f"- Missing Values: {info['missing_percentage']:.2f}%")
+                                st.write(f"  Suggestion: {info['missing_suggestion']}")
 
                 st.session_state.df = df
                 st.session_state.cleaned_df = None
@@ -232,46 +273,58 @@ def render_upload_page() -> None:
                 st.session_state.ai_suggestions_used = 0
                 st.session_state.dropped_columns = []
 
+                processing_time = (datetime.now() - start_time).total_seconds()
+                logger.info(f"Loaded file {uploaded_file.name} (size: {uploaded_file.size / 1024 / 1024:.2f} MB) in {processing_time:.2f}s")
+
                 st.success("Dataset uploaded successfully!")
                 st.session_state.progress["Upload"] = "Done"
                 save_auth_state()
-                st.rerun()
 
         except Exception as e:
-            st.error(
-                f"Error loading file: {
-                    str(e)}. Please ensure the file is a valid CSV, Excel, JSON, or Parquet file.")
+            st.error(f"Error loading file: {str(e)}. Please ensure the file is a valid CSV, Excel, JSON, or Parquet file.")
+            logger.error(f"Failed to load file {uploaded_file.name} (size: {uploaded_file.size / 1024 / 1024:.2f} MB): {str(e)}", exc_info=True)
             st.session_state.progress["Upload"] = "Failed"
-            return  # Exit to prevent further execution
+            return
 
     # Display metadata and buttons if dataset exists
     if st.session_state.df is not None:
-        st.subheader("Original Dataset Preview (First 10 Rows)")
-        st.dataframe(st.session_state.df.head(10), use_container_width=True)
-        st.subheader("Basic Metadata")
-        score = calculate_health_score(st.session_state.df)
-        st.write(f"Rows: {st.session_state.df.shape[0]}")
-        st.write(f"Columns: {st.session_state.df.shape[1]}")
-        st.write(f"Missing Values: {st.session_state.df.isna().sum().sum()}")
-        st.progress(score / 100)
-        st.write(f"Dataset Health Score: {score}/100")
-        st.info(
-            "This is the original dataset. Cleaning operations are applied to a working copy.")
-        st.warning(
-            "Uploading a new file will overwrite the current dataset and reset all cleaning operations. Proceed with caution!")
+        if st.session_state.df.isna().all().all():
+            st.warning("All values in the dataset are missing. You can still proceed to clean or delete the dataset, but results may be limited.")
+        logger.debug("Rendering dataset preview and metadata")
+        with st.expander("Original Dataset Preview (First 10 Rows)", expanded=False):
+            try:
+                st.dataframe(st.session_state.df.head(10), use_container_width=True)
+            except Exception as e:
+                logger.error(f"Error rendering DataFrame preview: {str(e)}")
+                st.error(f"Failed to display dataset preview: {str(e)}")
 
-        # Add "Start Cleaning" and "Delete Dataset" buttons side by side
+        st.subheader("Basic Metadata")
+        logger.debug("Calculating health score")
+        try:
+            score = calculate_health_score(st.session_state.df)
+            st.write(f"Rows: {st.session_state.df.shape[0]}")
+            st.write(f"Columns: {st.session_state.df.shape[1]}")
+            st.write(f"Missing Values: {st.session_state.df.isna().sum().sum()}")
+            st.progress(score / 100)
+            st.write(f"Dataset Health Score: {score}/100")
+        except Exception as e:
+            logger.error(f"Error calculating health score or metadata: {str(e)}")
+            st.error(f"Failed to calculate metadata: {str(e)}")
+
+        st.info("This is the original dataset. Cleaning operations are applied to a working copy.")
+        st.warning("Uploading a new file will overwrite the current dataset and reset all cleaning operations. Proceed with caution!")
+
+        logger.debug("Rendering Start Cleaning and Delete Dataset buttons")
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Start Cleaning", key="start_cleaning_button"):
                 logger.debug("Start Cleaning button clicked")
-                st.session_state.sidebar_page = "Clean"
+                st.session_state.navigate_to = "Clean"
                 save_auth_state()
                 st.rerun()
         with col2:
             if st.button("Delete Dataset", key="delete_dataset_button"):
                 logger.debug("Delete Dataset button clicked")
-                # Reset dataset and related session state variables
                 st.session_state.df = None
                 st.session_state.cleaned_df = None
                 st.session_state.logs = []
@@ -283,7 +336,6 @@ def render_upload_page() -> None:
                 st.session_state.cleaning_templates = {}
                 st.session_state.ai_suggestions_used = 0
                 st.session_state.dropped_columns = []
-                # Reset progress for all pages except "Upload"
                 st.session_state.progress = {
                     "Upload": "In Progress",
                     "Clean": "Not Started",
