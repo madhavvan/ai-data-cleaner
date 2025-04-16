@@ -126,8 +126,11 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
 
 
 
+# Replace the render_upload_page() function in ui.py with this
 def render_upload_page() -> None:
+    # Import save_auth_state locally to avoid circular import
     from app import save_auth_state
+
     st.markdown(
         "<p class='welcome'>Start your data journey here!</p>",
         unsafe_allow_html=True)
@@ -143,7 +146,7 @@ def render_upload_page() -> None:
         key="file_uploader"
     )
 
-    # Handle file upload first
+    # Handle file upload
     if uploaded_file:
         try:
             with st.spinner("Loading dataset..."):
@@ -293,7 +296,7 @@ def render_upload_page() -> None:
                 save_auth_state()
                 st.success("Dataset deleted successfully!")
                 st.rerun()
-
+                
     # Handle file upload
     if uploaded_file:
         try:
