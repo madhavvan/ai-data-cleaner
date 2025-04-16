@@ -16,6 +16,7 @@ from data_utils import (analyze_time_series, apply_cleaning_operations,
                         train_ml_model)
 from predictive import \
     render_predictive_page as render_predictive_page_external
+from app import save_auth_state
 
 # Set up logging with rotation
 logger = logging.getLogger(__name__)
@@ -121,7 +122,8 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
             f"cleaned_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"),
         unsafe_allow_html=True)
 
-# In ui.py, update the render_upload_page() function
+
+
 
 def render_upload_page() -> None:
     st.markdown(
@@ -277,7 +279,6 @@ def render_upload_page() -> None:
 
                 st.success("Dataset uploaded successfully!")
                 st.session_state.progress["Upload"] = "Done"
-                from app import save_auth_state
                 save_auth_state()
                 st.rerun()
         except Exception as e:
@@ -287,7 +288,6 @@ def render_upload_page() -> None:
             st.session_state.progress["Upload"] = "Failed"
 
 
-# In ui.py, update the render_clean_page() function
 
 def render_clean_page() -> None:
     # Remove this line to avoid duplicating the title
