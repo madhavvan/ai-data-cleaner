@@ -2,7 +2,7 @@ import streamlit as st
 # Ensure st.set_page_config is called exactly once at the top
 if not hasattr(st, "_is_page_config_set"):
     st.set_page_config(
-        page_title="Data Toy",  # Updated to "Data Toy"
+        page_title="Data ToyAI",  # Updated to "Data Toy"
         page_icon="assets/favicon.ico",  # Add custom favicon path
         layout="wide",
         initial_sidebar_state="expanded"
@@ -44,14 +44,18 @@ if not logger.handlers:  # Avoid adding handlers multiple times
     logger.addHandler(handler)
 
 
-# Google OAuth Configuration
-GOOGLE_CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
-GOOGLE_CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
-GOOGLE_REDIRECT_URI = "https://madhavvan-ai-data-cleaner-app-djmiue.streamlit.app"
+# Streamlit version with st.secrets
+GOOGLE_CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID", os.environ.get("GOOGLE_CLIENT_ID"))
+GOOGLE_CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET", os.environ.get("GOOGLE_CLIENT_SECRET"))
+GOOGLE_REDIRECT_URI = "https://datatoyai.com"
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 SCOPES = ["openid", "email", "profile"]
+
+
+
+
 
 # Initialize session state at the top
 if 'chat_history' not in st.session_state:

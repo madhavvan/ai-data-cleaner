@@ -34,7 +34,7 @@ if not logger.handlers:  # Avoid adding handlers multiple times
 # Securely load OpenAI API key
 api_key = None
 try:
-    api_key = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    api_key = st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("OpenAI API key not found in secrets or environment variables.")
     logger.info("Successfully loaded OPENAI_API_KEY")
