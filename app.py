@@ -2,11 +2,12 @@ import streamlit as st
 # Ensure st.set_page_config is called exactly once at the top
 if not hasattr(st, "_is_page_config_set"):
     st.set_page_config(
-        page_title="Data Toy AI",
+        page_title="Data Toy",  # Updated to "Data Toy"
+        page_icon="assets/favicon.ico",  # Add custom favicon path
         layout="wide",
         initial_sidebar_state="expanded"
     )
-    st._is_page_config_set = True  # Flag to prevent multiple calls
+    st._is_page_config_set = True  # Flag to prevent multiple calls # Flag to prevent multiple calls
 
 import logging
 import os
