@@ -136,6 +136,12 @@ def render_upload_page() -> None:
     initialize_session_state()
     st.session_state.progress["Upload"] = "In Progress"
 
+    # Reset file uploader state if returning to Upload page
+    if st.session_state.page == "Upload" and 'file_uploader' in st.session_state:
+        del st.session_state.file_uploader
+        if 'uploaded' in st.session_state:
+            del st.session_state.uploaded
+
     # Always display the upload widget
     uploaded_file = st.file_uploader(
         "Choose a file (CSV, Excel, JSON, or Parquet)",
@@ -239,6 +245,7 @@ def render_upload_page() -> None:
             if st.button("Start Cleaning", key="start_cleaning_button"):
                 logger.debug("Start Cleaning button clicked")
                 st.session_state.page = "Clean"
+                st.session_state.sidebar_page = "Clean"
                 save_auth_state()
                 st.rerun()
         with col2:
