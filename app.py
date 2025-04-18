@@ -1108,9 +1108,8 @@ if st.session_state.authenticated:
 # Initialize sidebar_page if not set
         if 'sidebar_page' not in st.session_state:
             st.session_state.sidebar_page = st.session_state.page
-
-        # Store the previous page to detect button-driven changes
-        previous_page = st.session_state.page
+        if 'sidebar_page' in st.session_state and st.session_state.sidebar_page != st.session_state.page:
+            st.session_state.sidebar_page = st.session_state.page
 
         page = st.sidebar.radio("Go to",
                                 ["Upload",
@@ -1121,13 +1120,9 @@ if st.session_state.authenticated:
                                  "Share"],
                                 key="sidebar_page")
         if page != st.session_state.page:
-            if st.session_state.page != previous_page:
-            # Button changed the page (e.g., "Start Cleaning"), sync sidebar
-                st.session_state.sidebar_page = st.session_state.page
-            else:
-                st.session_state.page = page
-                save_auth_state()
-                st.rerun()
+            st.session_state.page = page
+            save_auth_state()
+            st.rerun()
 
         # Theme Toggle
         st.sidebar.subheader("Theme")
