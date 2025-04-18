@@ -1100,11 +1100,11 @@ if st.session_state.authenticated:
         
         if 'sidebar_page' not in st.session_state or st.session_state.sidebar_page != st.session_state.page:
             st.session_state.sidebar_page = st.session_state.page
-    # Sync sidebar_page with page only if page was changed by a button (not user interaction)
-        if ('sidebar_page' in st.session_state and
-            st.session_state.sidebar_page != st.session_state.page and
-            not st.session_state.get('sidebar_interacted', False)):
-            st.session_state.sidebar_page = st.session_state.page
+    # # Sync sidebar_page with page only if page was changed by a button (not user interaction)
+    #     if ('sidebar_page' in st.session_state and
+    #         st.session_state.sidebar_page != st.session_state.page and
+    #         not st.session_state.get('sidebar_interacted', False)):
+    #         st.session_state.sidebar_page = st.session_state.page
 
 
         page = st.sidebar.radio("Go to",
