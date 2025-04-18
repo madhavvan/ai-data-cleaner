@@ -127,7 +127,6 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
 
 
 def render_upload_page() -> None:
-
     from app import save_auth_state
 
     st.markdown(
@@ -146,7 +145,7 @@ def render_upload_page() -> None:
     )
 
     # Handle file upload
-    if uploaded_file:
+    if uploaded_file and 'uploaded' not in st.session_state:
         try:
             with st.spinner("Loading dataset..."):
                 if uploaded_file.size > 50 * 1024 * 1024:  # 50MB
@@ -188,38 +187,13 @@ def render_upload_page() -> None:
 
                 if df.shape[0] > 4000:
                     st.info(
-                        f"Large dataset detected ({
-                            df.shape[0]} rows). Processing optimized for performance.")
+                        f"Large dataset detected ({df.shape[0]} rows). Processing optimized for performance.")
                 if df.empty:
                     st.error(
                         "Uploaded dataset is empty. Please upload a valid file.")
                     return
 
-                with st.spinner("Profiling dataset..."):
-                    profile = profile_dataset(df)
-                    st.subheader("Dataset Profile")
-                    for col, info in profile.items():
-                        if any(info.values()):
-                            st.write(f"**Column: {col}**")
-                            if info['mixed_types']:
-                                st.write(
-                                    f"- Mixed Types Detected: {info['mixed_types']}")
-                                st.write(
-                                    f"  Suggestion: {
-                                        info['type_suggestion']}")
-                            if info.get('inconsistent_formats'):
-                                st.write(
-                                    f"- Inconsistent Formats: {info['inconsistent_formats']}")
-                                st.write(
-                                    f"  Suggestion: {
-                                        info['format_suggestion']}")
-                            if info['missing_percentage'] > 10:
-                                st.write(
-                                    f"- Missing Values: {info['missing_percentage']:.2f}%")
-                                st.write(
-                                    f"  Suggestion: {
-                                        info['missing_suggestion']}")
-
+                # Store dataset and reset state
                 st.session_state.df = df
                 st.session_state.cleaned_df = None
                 st.session_state.logs = []
@@ -231,18 +205,17 @@ def render_upload_page() -> None:
                 st.session_state.cleaning_templates = {}
                 st.session_state.ai_suggestions_used = 0
                 st.session_state.dropped_columns = []
+                st.session_state.uploaded = True  # Flag to prevent rerun
 
                 st.success("Dataset uploaded successfully!")
                 st.session_state.progress["Upload"] = "Done"
                 save_auth_state()
-                st.rerun()
 
         except Exception as e:
             st.error(
-                f"Error loading file: {
-                    str(e)}. Please ensure the file is a valid CSV, Excel, JSON, or Parquet file.")
+                f"Error loading file: {str(e)}. Please ensure the file is a valid CSV, Excel, JSON, or Parquet file.")
             st.session_state.progress["Upload"] = "Failed"
-            return  # Exit to prevent further execution
+            return
 
     # Display metadata and buttons if dataset exists
     if st.session_state.df is not None:
@@ -266,7 +239,7 @@ def render_upload_page() -> None:
             if st.button("Start Cleaning", key="start_cleaning_button"):
                 logger.debug("Start Cleaning button clicked")
                 st.session_state.page = "Clean"
-                st.session_state.sidebar_page = "Clean"
+                st.session_state.sidebar_page = "Clean"  # Sync with sidebar
                 save_auth_state()
                 st.rerun()
         with col2:
@@ -284,6 +257,7 @@ def render_upload_page() -> None:
                 st.session_state.cleaning_templates = {}
                 st.session_state.ai_suggestions_used = 0
                 st.session_state.dropped_columns = []
+                st.session_state.uploaded = False  # Reset upload flag
                 # Reset progress for all pages except "Upload"
                 st.session_state.progress = {
                     "Upload": "In Progress",
