@@ -239,7 +239,6 @@ def render_upload_page() -> None:
             if st.button("Start Cleaning", key="start_cleaning_button"):
                 logger.debug("Start Cleaning button clicked")
                 st.session_state.page = "Clean"
-                st.session_state.sidebar_page = "Clean"  # Sync with sidebar
                 save_auth_state()
                 st.rerun()
         with col2:
