@@ -1099,18 +1099,19 @@ if st.session_state.authenticated:
             unsafe_allow_html=True)
         
 
-        # if 'sidebar_page' not in st.session_state:
-        #     st.session_state.sidebar_page = st.session_state.page
-        # if 'sidebar_page' in st.session_state and st.session_state.sidebar_page != st.session_state.page:
-        #     st.session_state.sidebar_page = st.session_state.page
-        if 'page' not in st.session_state:
-            st.session_state.page = "Upload"  # Default page
-        page = st.sidebar.radio("Go to",
-                                ["Upload", "Clean", "Insights", "Visualize", "Predictive", "Share"],
-                                index=["Upload", "Clean", "Insights", "Visualize", "Predictive", "Share"].index(st.session_state.page))
+        if 'sidebar_page' not in st.session_state:
+            st.session_state.sidebar_page = st.session_state.page
+        if 'sidebar_page' in st.session_state and st.session_state.sidebar_page != st.session_state.page:
+            st.session_state.sidebar_page = st.session_state.page
 
-        # if st.session_state.page != st.session_state.sidebar_page:
-        #     st.session_state.page = st.session_state.sidebar_page
+        page = st.sidebar.radio("Go to",
+                                ["Upload",
+                                 "Clean",
+                                 "Insights",
+                                 "Visualize",
+                                 "Predictive",
+                                 "Share"],
+                                key="sidebar_page")
         if page != st.session_state.page:
             st.session_state.page = page
             save_auth_state()
