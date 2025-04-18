@@ -1115,10 +1115,10 @@ if st.session_state.authenticated:
                                 key="sidebar_page")
         if st.session_state.page != st.session_state.sidebar_page:
             st.session_state.page = st.session_state.sidebar_page
-        if page != st.session_state.page:
-            st.session_state.page = page
-            save_auth_state()
-            st.rerun()
+        # if page != st.session_state.page:
+        #     st.session_state.page = page
+        #     save_auth_state()
+        #     st.rerun()
 
         # Theme Toggle
         st.sidebar.subheader("Theme")
