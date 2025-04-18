@@ -1063,142 +1063,133 @@ if st.session_state.authenticated:
     load_css(st.session_state.theme)
 
     # Sidebar setup
-    def setup_sidebar(
-            logo_path: str = "images/datatoy_logo.png") -> Optional[str]:
-        """
-        Set up the sidebar with logo, navigation, AI assistant, theme toggle, and additional links.
+ def setup_sidebar(logo_path: str = "images/datatoy_logo.png") -> Optional[str]:
+    """
+    Set up the sidebar with logo, navigation, AI assistant, theme toggle, and additional links.
 
-        Args:
-            logo_path (str): Path to the logo image.
+    Args:
+        logo_path (str): Path to the logo image.
 
-        Returns:
-            Optional[str]: Selected page or None if no page is selected.
-        """
-        try:
-            st.sidebar.image(logo_path, use_container_width=True)
-        except FileNotFoundError:
-            st.sidebar.markdown(
-                "**Data Toy** (Logo not found)",
-                unsafe_allow_html=True)
-            st.sidebar.warning(
-                f"Logo file '{logo_path}' not found. Please add it to the project directory.")
-
-        # Display Google Profile Picture and Name if available
-        if st.session_state.user_info and 'picture' in st.session_state.user_info:
-            st.sidebar.image(
-                st.session_state.user_info['picture'],
-                width=100,
-                caption=f"Welcome, {
-                    st.session_state.user_info['name']}")
-        else:
-            st.sidebar.markdown(f"Welcome, {st.session_state.username}")
-
-        st.sidebar.title("Navigation")
+    Returns:
+        Optional[str]: Selected page or None if no page is selected.
+    """
+    try:
+        st.sidebar.image(logo_path, use_container_width=True)
+    except FileNotFoundError:
         st.sidebar.markdown(
-            "<p class='tagline'>Transform your data with AI magic.</p>",
+            "**Data Toy** (Logo not found)",
             unsafe_allow_html=True)
-        if 'sidebar_page' not in st.session_state or st.session_state.sidebar_page != st.session_state.page:
-            st.session_state.sidebar_page = st.session_state.page
-        
-        page = st.sidebar.radio("Go to",
-                                ["Upload",
-                                 "Clean",
-                                 "Insights",
-                                 "Visualize",
-                                 "Predictive",
-                                 "Share"],
-                                key="sidebar_page")
-        if page != st.session_state.page:
-            st.session_state.page = page
+        st.sidebar.warning(
+            f"Logo file '{logo_path}' not found. Please add it to the project directory.")
+
+    # Display Google Profile Picture and Name if available
+    if st.session_state.user_info and 'picture' in st.session_state.user_info:
+        st.sidebar.image(
+            st.session_state.user_info['picture'],
+            width=100,
+            caption=f"Welcome, {st.session_state.user_info['name']}")
+    else:
+        st.sidebar.markdown(f"Welcome, {st.session_state.username}")
+
+    st.sidebar.title("Navigation")
+    st.sidebar.markdown(
+        "<p class='tagline'>Transform your data with AI magic.</p>",
+        unsafe_allow_html=True)
+
+    # Initialize sidebar_page if not set
+    if 'sidebar_page' not in st.session_state:
+        st.session_state.sidebar_page = st.session_state.page
+
+    page = st.sidebar.radio(
+        "Go to",
+        ["Upload", "Clean", "Insights", "Visualize", "Predictive", "Share"],
+        key="sidebar_page"
+    )
+    if page != st.session_state.page:
+        st.session_state.page = page
+        save_auth_state()
+        st.rerun()
+
+    # Theme Toggle
+    st.sidebar.subheader("Theme")
+    theme_choice = st.sidebar.selectbox(
+        "Select Theme", ["Dark", "Light"],
+        index=0 if st.session_state.theme == "dark" else 1
+    )
+    if theme_choice == "Dark" and st.session_state.theme != "dark":
+        st.session_state.theme = "dark"
+        save_auth_state()
+        st.rerun()
+    elif theme_choice == "Light" and st.session_state.theme != "light":
+        st.session_state.theme = "light"
+        save_auth_state()
+        st.rerun()
+
+    # Progress Tracker
+    st.sidebar.subheader("Your Progress")
+    progress_text = ""
+    for step, status in st.session_state.progress.items():
+        emoji = "✅" if status == "Done" else "🟡" if status == "In Progress" else "⬜"
+        progress_text += f"{emoji} {step}: {status}\n"
+    st.sidebar.markdown(progress_text)
+
+    if not AI_AVAILABLE:
+        st.sidebar.error(
+            "⚠️ AI features are disabled. Please configure an OPENAI_API_KEY in .streamlit/secrets.toml or as an environment variable.")
+
+    st.sidebar.subheader("AI Data Assistant")
+    chat_container = st.sidebar.container()
+    with chat_container:
+        for message in st.session_state.chat_history:
+            with st.chat_message(message["role"]):
+                st.write(f"**{message['role'].capitalize()}:** {message['content']}")
+
+    chat_input = st.sidebar.chat_input("Ask Data Toy")
+    if chat_input:
+        df = st.session_state.get('cleaned_df') if st.session_state.get('cleaned_df') is not None else st.session_state.get('df')
+        if df is not None:
+            st.session_state.chat_history.append({"role": "user", "content": chat_input})
+            with st.spinner("Processing your query..."):
+                response = chat_with_gpt(df, chat_input, max_tokens=100)
+            st.session_state.chat_history.append({"role": "assistant", "content": response})
             save_auth_state()
             st.rerun()
+        else:
+            st.sidebar.warning("Please upload a dataset first to use the AI assistant.")
 
-        # Theme Toggle
-        st.sidebar.subheader("Theme")
-        theme_choice = st.sidebar.selectbox(
-            "Select Theme", [
-                "Dark", "Light"], index=0 if st.session_state.theme == "dark" else 1)
-        if theme_choice == "Dark" and st.session_state.theme != "dark":
-            st.session_state.theme = "dark"
-            save_auth_state()
-            st.rerun()
-        elif theme_choice == "Light" and st.session_state.theme != "light":
-            st.session_state.theme = "light"
-            save_auth_state()
-            st.rerun()
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**Feedback**")
+    st.sidebar.markdown(
+        "Help us improve! [Share your feedback](https://docs.google.com/forms/d/e/1FAIpQLScpUFM0Y5_i5LJDM-HZEZEtOHbLHy4Vp-ek_-819MRZo7Q9rQ/viewform?usp=dialog)")
+    st.sidebar.markdown("**Join Our Community**")
+    st.sidebar.markdown(
+        "Connect with others! [Join our Discord](https://discord.gg/your-invite-link)")
+    st.sidebar.markdown("**Upgrade to Premium**")
+    st.sidebar.markdown(
+        "Unlock advanced features for $5/month! [Upgrade Now](https://stripe.com/your-checkout-link)")
 
-        # Progress Tracker
-        st.sidebar.subheader("Your Progress")
-        progress_text = ""
-        for step, status in st.session_state.progress.items():
-            emoji = "✅" if status == "Done" else "🟡" if status == "In Progress" else "⬜"
-            progress_text += f"{emoji} {step}: {status}\n"
-        st.sidebar.markdown(progress_text)
+    is_dev_mode = os.getenv("DEV_MODE") == "true"
+    if is_dev_mode:
+        st.sidebar.info("Running in DEV_MODE: Unlimited AI suggestions enabled.")
 
-        if not AI_AVAILABLE:
-            st.sidebar.error(
-                "⚠️ AI features are disabled. Please configure an OPENAI_API_KEY in .streamlit/secrets.toml or as an environment variable.")
+    # Logout Button
+    if st.sidebar.button("Logout"):
+        st.session_state.authenticated = False
+        st.session_state.username = None
+        st.session_state.user_info = None
+        st.session_state.session_token = None
+        st.session_state.page = "Login"
+        # Clear session data from the database
+        conn = get_db_connection()
+        if conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM sessions WHERE username = %s", (st.session_state.username,))
+            conn.commit()
+            conn.close()
+        st.query_params.clear()
+        st.rerun()
 
-        st.sidebar.subheader("AI Data Assistant")
-        chat_container = st.sidebar.container()
-        with chat_container:
-            for message in st.session_state.chat_history:
-                with st.chat_message(message["role"]):
-                    st.write(
-                        f"**{message['role'].capitalize()}:** {message['content']}")
-
-        chat_input = st.sidebar.chat_input("Ask Data Toy")
-        if chat_input:
-            df = st.session_state.get('cleaned_df') if st.session_state.get(
-                'cleaned_df') is not None else st.session_state.get('df')
-            if df is not None:
-                st.session_state.chat_history.append(
-                    {"role": "user", "content": chat_input})
-                with st.spinner("Processing your query..."):
-                    response = chat_with_gpt(df, chat_input, max_tokens=100)
-                st.session_state.chat_history.append(
-                    {"role": "assistant", "content": response})
-                save_auth_state()  # Save session state after chat interaction
-                st.rerun()
-            else:
-                st.sidebar.warning(
-                    "Please upload a dataset first to use the AI assistant.")
-
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("**Feedback**")
-        st.sidebar.markdown(
-            "Help us improve! [Share your feedback](https://docs.google.com/forms/d/e/1FAIpQLScpUFM0Y5_i5LJDM-HZEZEtOHbLHy4Vp-ek_-819MRZo7Q9rQ/viewform?usp=dialog)")
-        st.sidebar.markdown("**Join Our Community**")
-        st.sidebar.markdown(
-            "Connect with others! [Join our Discord](https://discord.gg/your-invite-link)")
-        st.sidebar.markdown("**Upgrade to Premium**")
-        st.sidebar.markdown(
-            "Unlock advanced features for $5/month! [Upgrade Now](https://stripe.com/your-checkout-link)")
-
-        is_dev_mode = os.getenv("DEV_MODE") == "true"
-        if is_dev_mode:
-            st.sidebar.info(
-                "Running in DEV_MODE: Unlimited AI suggestions enabled.")
-
-        # Logout Button
-        if st.sidebar.button("Logout"):
-            st.session_state.authenticated = False
-            st.session_state.username = None
-            st.session_state.user_info = None
-            st.session_state.session_token = None
-            st.session_state.page = "Login"
-            # Clear session data from the database
-            conn = get_db_connection()
-            if conn:
-                c = conn.cursor()
-                c.execute("DELETE FROM sessions WHERE username = %s",
-                          (st.session_state.username,))
-                conn.commit()
-                conn.close()
-            st.query_params.clear()  # Clear session token from query parameters
-            st.rerun()
-
-        return page
+    return page
 
     # Main application logic
     def main() -> None:
