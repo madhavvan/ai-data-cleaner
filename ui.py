@@ -195,30 +195,6 @@ def render_upload_page() -> None:
                         "Uploaded dataset is empty. Please upload a valid file.")
                     return
 
-                with st.spinner("Profiling dataset..."):
-                    profile = profile_dataset(df)
-                    st.subheader("Dataset Profile")
-                    for col, info in profile.items():
-                        if any(info.values()):
-                            st.write(f"**Column: {col}**")
-                            if info['mixed_types']:
-                                st.write(
-                                    f"- Mixed Types Detected: {info['mixed_types']}")
-                                st.write(
-                                    f"  Suggestion: {
-                                        info['type_suggestion']}")
-                            if info.get('inconsistent_formats'):
-                                st.write(
-                                    f"- Inconsistent Formats: {info['inconsistent_formats']}")
-                                st.write(
-                                    f"  Suggestion: {
-                                        info['format_suggestion']}")
-                            if info['missing_percentage'] > 10:
-                                st.write(
-                                    f"- Missing Values: {info['missing_percentage']:.2f}%")
-                                st.write(
-                                    f"  Suggestion: {
-                                        info['missing_suggestion']}")
 
                 st.session_state.df = df
                 st.session_state.cleaned_df = None
