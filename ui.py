@@ -126,8 +126,9 @@ def display_cleaned_dataset(cleaned_df: pd.DataFrame) -> None:
 
 
 
+# Replace the render_upload_page() function in ui.py with this
 def render_upload_page() -> None:
-
+    # Import save_auth_state locally to avoid circular import
     from app import save_auth_state
 
     st.markdown(
@@ -195,6 +196,30 @@ def render_upload_page() -> None:
                         "Uploaded dataset is empty. Please upload a valid file.")
                     return
 
+                with st.spinner("Profiling dataset..."):
+                    profile = profile_dataset(df)
+                    st.subheader("Dataset Profile")
+                    for col, info in profile.items():
+                        if any(info.values()):
+                            st.write(f"**Column: {col}**")
+                            if info['mixed_types']:
+                                st.write(
+                                    f"- Mixed Types Detected: {info['mixed_types']}")
+                                st.write(
+                                    f"  Suggestion: {
+                                        info['type_suggestion']}")
+                            if info.get('inconsistent_formats'):
+                                st.write(
+                                    f"- Inconsistent Formats: {info['inconsistent_formats']}")
+                                st.write(
+                                    f"  Suggestion: {
+                                        info['format_suggestion']}")
+                            if info['missing_percentage'] > 10:
+                                st.write(
+                                    f"- Missing Values: {info['missing_percentage']:.2f}%")
+                                st.write(
+                                    f"  Suggestion: {
+                                        info['missing_suggestion']}")
 
                 st.session_state.df = df
                 st.session_state.cleaned_df = None
@@ -236,42 +261,41 @@ def render_upload_page() -> None:
         st.warning(
             "Uploading a new file will overwrite the current dataset and reset all cleaning operations. Proceed with caution!")
 
-        # Add "Start Cleaning" and "Delete Dataset" buttons side by side
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Start Cleaning", key="start_cleaning_button"):
-                logger.debug("Start Cleaning button clicked")
-                st.session_state.page = "Clean"
-                save_auth_state()
-                st.rerun()
-        with col2:
-            if st.button("Delete Dataset", key="delete_dataset_button"):
-                logger.debug("Delete Dataset button clicked")
+        # # Add "Start Cleaning" and "Delete Dataset" buttons side by side
+        # col1, col2 = st.columns(2)
+        # with col1:
+        #     if st.button("Start Cleaning", key="start_cleaning_button"):
+        #         logger.debug("Start Cleaning button clicked")
+        #         st.session_state.page = "Clean"
+        #         save_auth_state()
+        #         st.rerun()
+        # with col2:
+        if st.button("Delete Dataset", key="delete_dataset_button"):
+            logger.debug("Delete Dataset button clicked")
                 # Reset dataset and related session state variables
-                st.session_state.df = None
-                st.session_state.cleaned_df = None
-                st.session_state.logs = []
-                st.session_state.suggestions = []
-                st.session_state.previous_states = []
-                st.session_state.redo_states = []
-                st.session_state.chat_history = []
-                st.session_state.cleaning_history = []
-                st.session_state.cleaning_templates = {}
-                st.session_state.ai_suggestions_used = 0
-                st.session_state.dropped_columns = []
+            st.session_state.df = None
+            st.session_state.cleaned_df = None
+            st.session_state.logs = []
+            st.session_state.suggestions = []
+            st.session_state.previous_states = []
+            st.session_state.redo_states = []
+            st.session_state.chat_history = []
+            st.session_state.cleaning_history = []
+            st.session_state.cleaning_templates = {}
+            st.session_state.ai_suggestions_used = 0
+            st.session_state.dropped_columns = []
                 # Reset progress for all pages except "Upload"
-                st.session_state.progress = {
-                    "Upload": "In Progress",
-                    "Clean": "Not Started",
-                    "Insights": "Not Started",
-                    "Visualize": "Not Started",
-                    "Predictive": "Not Started",
-                    "Share": "Not Started"
-                }
-                save_auth_state()
-                st.success("Dataset deleted successfully!")
-                st.rerun()
-
+            st.session_state.progress = {
+                "Upload": "In Progress",
+                "Clean": "Not Started",
+                "Insights": "Not Started",
+                "Visualize": "Not Started",
+                "Predictive": "Not Started",
+                "Share": "Not Started"
+            }
+            save_auth_state()
+            st.success("Dataset deleted successfully!")
+            st.rerun()
 
 def render_clean_page() -> None:
     from app import save_auth_state
