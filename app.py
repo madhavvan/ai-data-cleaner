@@ -28,7 +28,8 @@ from data_utils import AI_AVAILABLE, chat_with_gpt
 from ui import (render_clean_page, render_insights_page,
                 render_predictive_page, render_upload_page)
 from visualizations import render_visualization_page
-
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
 
 
 # Set up logging with rotation
@@ -43,19 +44,30 @@ if not logger.handlers:  # Avoid adding handlers multiple times
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(handler)
 
-
 # Streamlit version with st.secrets
-GOOGLE_CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID", os.environ.get("GOOGLE_CLIENT_ID"))
-GOOGLE_CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET", os.environ.get("GOOGLE_CLIENT_SECRET"))
+# Load secrets from Key Vault
+try:
+    key_vault_url = "https://datatoy.vault.azure.net/"
+    credential = DefaultAzureCredential()
+    secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
+
+    GOOGLE_CLIENT_ID = secret_client.get_secret("GOOGLE-CLIENT-ID").value
+    GOOGLE_CLIENT_SECRET = secret_client.get_secret("GOOGLE-CLIENT-SECRET").value
+    DB_NAME = secret_client.get_secret("DB-NAME").value
+    DB_USER = secret_client.get_secret("DB-USER").value
+    DB_PASSWORD = secret_client.get_secret("DB-PASSWORD").value
+    DB_HOST = secret_client.get_secret("DB-HOST").value
+    DB_PORT = secret_client.get_secret("DB-PORT").value
+    OPENAI_API_KEY = secret_client.get_secret("OPENAI-API-KEY").value
+except Exception as e:
+    st.error(f"Failed to retrieve secrets from Key Vault: {str(e)}")
+    logger.error(f"Failed to retrieve secrets from Key Vault: {str(e)}")
+    st.stop()
 GOOGLE_REDIRECT_URI = "https://datatoyai.com"
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 SCOPES = ["openid", "email", "profile"]
-
-
-
-
 
 # Initialize session state at the top
 if 'chat_history' not in st.session_state:
