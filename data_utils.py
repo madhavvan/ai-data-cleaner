@@ -23,6 +23,16 @@ from cryptography.fernet import Fernet
 import sqlite3
 from datetime import datetime
 
+# Import Azure Key Vault dependencies only if needed
+try:
+    from azure.identity import DefaultAzureCredential
+    from azure.keyvault.secrets import SecretClient
+    AZURE_KEY_VAULT_AVAILABLE = True
+except ImportError:
+    AZURE_KEY_VAULT_AVAILABLE = False
+    # Determine the environment
+IS_AZURE = os.environ.get("WEBSITE_SITE_NAME") is not None
+
 # Set up logging with rotation
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)  # Change to INFO for production
@@ -31,18 +41,24 @@ if not logger.handlers:  # Avoid adding handlers multiple times
     handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(handler)
 
-# Securely load OpenAI API key
-api_key = None
-try:
-    api_key = st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OpenAI API key not found in secrets or environment variables.")
-    logger.info("Successfully loaded OPENAI_API_KEY")
-except Exception as e:
-    logger.error(f"Failed to load OpenAI API key: {str(e)}")
-    st.error("OpenAI API key is missing. Please configure it in .streamlit/secrets.toml or as an environment variable to enable AI features.")
+# Load OpenAI API key
+if IS_AZURE and AZURE_KEY_VAULT_AVAILABLE:
+    logger.info("Running on Azure, attempting to load OPENAI_API_KEY from Key Vault")
+    try:
+        key_vault_url = "https://datatoy.vault.azure.net/"
+        credential = DefaultAzureCredential()
+        secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
+        api_key = secret_client.get_secret("OPENAI-API-KEY").value
+        logger.info("Retrieved OPENAI_API_KEY from Key Vault")
+    except Exception as e:
+        logger.error(f"Failed to retrieve OPENAI_API_KEY from Key Vault: {str(e)}")
+        st.error(f"Failed to retrieve OPENAI_API_KEY from Key Vault: {str(e)}")
+        api_key = None
+else:
+    logger.info("Not running on Azure or Key Vault unavailable, falling back to st.secrets or os.environ")
+    api_key = os.environ.get("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
 
-# Initialize OpenAI client with error handling
+# Initialize OpenAI client
 client = None
 if api_key:
     try:
@@ -53,8 +69,10 @@ if api_key:
         logger.error(f"Failed to initialize OpenAI client: {str(e)}")
         st.error("Failed to initialize OpenAI client. AI-driven features will be disabled.")
         client = None
+else:
+    logger.error("OPENAI_API_KEY is missing.")
+    st.error("OPENAI_API_KEY is missing. Please configure it to enable AI features.")
 
-# Global flag for AI availability
 AI_AVAILABLE = client is not None
 
 # Encryption Setup
