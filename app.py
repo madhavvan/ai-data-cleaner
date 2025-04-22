@@ -46,23 +46,8 @@ if not logger.handlers:  # Avoid adding handlers multiple times
 
 # Streamlit version with st.secrets
 # Load secrets from Key Vault
-try:
-    key_vault_url = "https://datatoy.vault.azure.net/"
-    credential = DefaultAzureCredential()
-    secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
-
-    GOOGLE_CLIENT_ID = secret_client.get_secret("GOOGLE-CLIENT-ID").value
-    GOOGLE_CLIENT_SECRET = secret_client.get_secret("GOOGLE-CLIENT-SECRET").value
-    DB_NAME = secret_client.get_secret("DB-NAME").value
-    DB_USER = secret_client.get_secret("DB-USER").value
-    DB_PASSWORD = secret_client.get_secret("DB-PASSWORD").value
-    DB_HOST = secret_client.get_secret("DB-HOST").value
-    DB_PORT = secret_client.get_secret("DB-PORT").value
-    OPENAI_API_KEY = secret_client.get_secret("OPENAI-API-KEY").value
-except Exception as e:
-    st.error(f"Failed to retrieve secrets from Key Vault: {str(e)}")
-    logger.error(f"Failed to retrieve secrets from Key Vault: {str(e)}")
-    st.stop()
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID") or st.secrets.get("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET") or st.secrets.get("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = "https://datatoyai.com"
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
