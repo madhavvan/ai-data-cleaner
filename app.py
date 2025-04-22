@@ -2,17 +2,17 @@ import streamlit as st
 # Ensure st.set_page_config is called exactly once at the top
 if not hasattr(st, "_is_page_config_set"):
     st.set_page_config(
-        page_title="Data ToyAI",  # Updated to "Data Toy"
-        page_icon="assets/favicon.ico",  # Add custom favicon path
+        page_title="Data ToyAI",
+        page_icon="assets/favicon.ico",
         layout="wide",
         initial_sidebar_state="expanded"
     )
-    st._is_page_config_set = True  # Flag to prevent multiple calls # Flag to prevent multiple calls
+    st._is_page_config_set = True
 
 import logging
 import os
 import pickle
-import uuid  # For generating session tokens
+import uuid
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 
@@ -28,27 +28,80 @@ from data_utils import AI_AVAILABLE, chat_with_gpt
 from ui import (render_clean_page, render_insights_page,
                 render_predictive_page, render_upload_page)
 from visualizations import render_visualization_page
-from azure.identity import DefaultAzureCredential
-from azure.keyvault.secrets import SecretClient
 
+# Import Azure Key Vault dependencies only if needed
+try:
+    from azure.identity import DefaultAzureCredential
+    from azure.keyvault.secrets import SecretClient
+    AZURE_KEY_VAULT_AVAILABLE = True
+except ImportError:
+    AZURE_KEY_VAULT_AVAILABLE = False
 
 # Set up logging with rotation
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)  # Change to INFO for production
-if not logger.handlers:  # Avoid adding handlers multiple times
+logger.setLevel(logging.INFO)
+if not logger.handlers:
     handler = RotatingFileHandler(
         'app.log',
         maxBytes=5 * 1024 * 1024,
-        backupCount=3)  # 5MB per file, keep 3 backups
+        backupCount=3)
     handler.setFormatter(logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(handler)
 
-# Streamlit version with st.secrets
-# Load secrets from Key Vault
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID") or st.secrets.get("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET") or st.secrets.get("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI = "https://datatoyai.com"
+# Determine the environment (Azure or Streamlit Cloud)
+IS_AZURE = os.environ.get("WEBSITE_SITE_NAME") is not None  # Azure App Service sets this
+
+# Load secrets
+if IS_AZURE and AZURE_KEY_VAULT_AVAILABLE:
+    logger.info("Running on Azure, attempting to load secrets from Key Vault")
+    try:
+        key_vault_url = "https://datatoy.vault.azure.net/"
+        credential = DefaultAzureCredential()
+        secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
+
+        GOOGLE_CLIENT_ID = secret_client.get_secret("GOOGLE-CLIENT-ID").value
+        GOOGLE_CLIENT_SECRET = secret_client.get_secret("GOOGLE-CLIENT-SECRET").value
+        DB_NAME = secret_client.get_secret("DB-NAME").value
+        DB_USER = secret_client.get_secret("DB-USER").value
+        DB_PASSWORD = secret_client.get_secret("DB-PASSWORD").value
+        DB_HOST = secret_client.get_secret("DB-HOST").value
+        DB_PORT = secret_client.get_secret("DB-PORT").value
+        OPENAI_API_KEY = secret_client.get_secret("OPENAI-API-KEY").value
+        logger.info("Successfully retrieved secrets from Key Vault")
+    except Exception as e:
+        st.error(f"Failed to retrieve secrets from Key Vault: {str(e)}")
+        logger.error(f"Failed to retrieve secrets from Key Vault: {str(e)}")
+        st.stop()
+else:
+    logger.info("Not running on Azure or Key Vault unavailable, falling back to st.secrets or os.environ")
+    GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID") or st.secrets.get("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET") or st.secrets.get("GOOGLE_CLIENT_SECRET")
+    DB_NAME = os.environ.get("DB_NAME") or st.secrets.get("DB_NAME")
+    DB_USER = os.environ.get("DB_USER") or st.secrets.get("DB_USER")
+    DB_PASSWORD = os.environ.get("DB_PASSWORD") or st.secrets.get("DB_PASSWORD")
+    DB_HOST = os.environ.get("DB_HOST") or st.secrets.get("DB_HOST")
+    DB_PORT = os.environ.get("DB_PORT") or st.secrets.get("DB_PORT")
+    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
+
+# Validate secrets
+missing_secrets = [k for k, v in {
+    "GOOGLE_CLIENT_ID": GOOGLE_CLIENT_ID,
+    "GOOGLE_CLIENT_SECRET": GOOGLE_CLIENT_SECRET,
+    "DB_NAME": DB_NAME,
+    "DB_USER": DB_USER,
+    "DB_PASSWORD": DB_PASSWORD,
+    "DB_HOST": DB_HOST,
+    "DB_PORT": DB_PORT,
+    "OPENAI_API_KEY": OPENAI_API_KEY
+}.items() if not v]
+if missing_secrets:
+    error_msg = f"Missing secrets: {missing_secrets}. Check environment variables or Streamlit secrets."
+    st.error(error_msg)
+    logger.error(error_msg)
+    st.stop()
+
+GOOGLE_REDIRECT_URI = "https://datatoyai-fhe5d3g3c2dsexfw.eastus-01.azurewebsites.net" if IS_AZURE else "https://datatoyai.streamlit.app"
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
