@@ -138,18 +138,17 @@ if 'session_token' not in st.session_state:
 def get_db_connection():
     try:
         return psycopg2.connect(
-            dbname=st.secrets["DB_NAME"],
-            user=st.secrets["DB_USER"],
-            password=st.secrets["DB_PASSWORD"],
-            host=st.secrets["DB_HOST"],
-            port=st.secrets["DB_PORT"],
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT,
             sslmode="require"
         )
     except Exception as e:
         st.error(f"Failed to connect to database: {str(e)}")
         logger.error(f"Failed to connect to database: {str(e)}")
         return None
-
 
 def init_db():
     conn = get_db_connection()
