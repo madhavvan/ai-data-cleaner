@@ -101,7 +101,7 @@ if missing_secrets:
     logger.error(error_msg)
     st.stop()
 
-GOOGLE_REDIRECT_URI = "https://datatoyai-fhe5d3g3c2dsexfw.eastus-01.azurewebsites.net" if IS_AZURE else "https://datatoyai.streamlit.app"
+GOOGLE_REDIRECT_URI = "https://datatoyai.com"
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
