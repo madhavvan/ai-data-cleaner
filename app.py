@@ -674,8 +674,8 @@ def render_custom_header(page_title: str) -> None:
 
 
 def get_google_auth_url():
-    # Use GOOGLE_REDIRECT_URI without query parameters
-    base_redirect_uri = GOOGLE_REDIRECT_URI.split('?')[0]  # Remove any query parameters
+    base_redirect_uri = GOOGLE_REDIRECT_URI.split('?')[0]
+    logger.debug(f"Redirect URI in auth request: {base_redirect_uri}")
     client = OAuth2Session(
         GOOGLE_CLIENT_ID,
         GOOGLE_CLIENT_SECRET,
@@ -683,19 +683,29 @@ def get_google_auth_url():
         scope=SCOPES)
     auth_url, state = client.create_authorization_url(GOOGLE_AUTH_URL)
     st.session_state['oauth_state'] = state
+    logger.debug(f"State set in session: {state}")
+    logger.debug(f"Authorization URL: {auth_url}")
     return auth_url
-
 
 def handle_google_callback():
     try:
-        # Use GOOGLE_REDIRECT_URI without query parameters
         base_redirect_uri = GOOGLE_REDIRECT_URI.split('?')[0]
+        # Retrieve state from query parameters instead of session to avoid persistence issues
+        state = st.query_params.get('state', [None])[0]
+        logger.debug(f"Redirect URI in token exchange: {base_redirect_uri}")
+        logger.debug(f"State retrieved from query params: {state}")
+        # Log all query parameters
+        query_params = st.query_params.to_dict()
+        logger.debug(f"Query parameters received: {query_params}")
+        code = st.query_params.get('code', [None])[0]
+        logger.debug(f"Authorization code received: {code}")
+        if not code:
+            raise ValueError("No authorization code received from Google")
         client = OAuth2Session(
             GOOGLE_CLIENT_ID,
             GOOGLE_CLIENT_SECRET,
             redirect_uri=base_redirect_uri,
-            state=st.session_state.get('oauth_state'))
-        code = st.query_params.get('code', [None])[0]
+            state=state)
         token = client.fetch_token(GOOGLE_TOKEN_URL, code=code)
         user_info = requests.get(
             GOOGLE_USERINFO_URL, headers={
