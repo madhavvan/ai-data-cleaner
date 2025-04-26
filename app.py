@@ -674,10 +674,12 @@ def render_custom_header(page_title: str) -> None:
 
 
 def get_google_auth_url():
+    # Use GOOGLE_REDIRECT_URI without query parameters
+    base_redirect_uri = GOOGLE_REDIRECT_URI.split('?')[0]  # Remove any query parameters
     client = OAuth2Session(
         GOOGLE_CLIENT_ID,
         GOOGLE_CLIENT_SECRET,
-        redirect_uri=GOOGLE_REDIRECT_URI,
+        redirect_uri=base_redirect_uri,
         scope=SCOPES)
     auth_url, state = client.create_authorization_url(GOOGLE_AUTH_URL)
     st.session_state['oauth_state'] = state
@@ -686,18 +688,18 @@ def get_google_auth_url():
 
 def handle_google_callback():
     try:
+        # Use GOOGLE_REDIRECT_URI without query parameters
+        base_redirect_uri = GOOGLE_REDIRECT_URI.split('?')[0]
         client = OAuth2Session(
             GOOGLE_CLIENT_ID,
             GOOGLE_CLIENT_SECRET,
-            redirect_uri=GOOGLE_REDIRECT_URI,
+            redirect_uri=base_redirect_uri,
             state=st.session_state.get('oauth_state'))
-        # Updated for Streamlit query params (code is now a list)
         code = st.query_params.get('code', [None])[0]
         token = client.fetch_token(GOOGLE_TOKEN_URL, code=code)
         user_info = requests.get(
             GOOGLE_USERINFO_URL, headers={
-                'Authorization': f"Bearer {
-                    token['access_token']}"}).json()
+                'Authorization': f"Bearer {token['access_token']}"}).json()
         if 'error' in user_info:
             st.error(f"Google OAuth error: {user_info['error']}")
             return None
