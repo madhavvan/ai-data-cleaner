@@ -21,6 +21,7 @@ import psycopg2
 import requests
 
 import streamlit.components.v1 as components
+from streamlit.errors import StreamlitAPIException
 from authlib.integrations.requests_client import OAuth2Session
 from psycopg2 import sql
 
