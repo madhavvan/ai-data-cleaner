@@ -372,10 +372,33 @@ def load_session(username):
     conn.close()
     if result:
         session_data = pickle.loads(result[0])
+        # Define keys to skip during loading (widget keys, etc.)
+        keys_to_skip = {
+            'authenticated',
+            'username',
+            'user_info',
+            'session_token',
+            'page',
+            'login_button', # <-- Skip the button key
+            'signup_button', # <-- Add other widget keys if necessary
+            'register_button',
+            'back_to_login_button'
+            # Add any other keys associated with widgets that might be saved
+        }
         for key, value in session_data.items():
-            if key not in ['authenticated', 'username', 'user_info',
-                           'session_token', 'page']:  # These are handled by restore_session
-                st.session_state[key] = value
+            # Only load keys that are not explicitly managed elsewhere or are widget keys
+            if key not in keys_to_skip:
+                # Check if the key corresponds to an already instantiated widget
+                # This check might be necessary if keys_to_skip isn't exhaustive
+                # However, directly checking widget state can be complex, so skipping known keys is often safer.
+                try:
+                    st.session_state[key] = value
+                except StreamlitAPIException as e:
+                    # Log if a widget key was attempted to be set, for debugging
+                    if "cannot be modified after the widget with key" in str(e):
+                         logger.warning(f"Skipped loading session state for widget key: {key}")
+                    else:
+                        raise e # Reraise other potential errors
 
 # Load CSS with theme support
 
